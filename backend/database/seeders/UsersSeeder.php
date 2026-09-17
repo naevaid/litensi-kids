@@ -228,12 +228,12 @@ class UsersSeeder extends Seeder
                 'created_at' => '2026-02-21 10:40:00',
                 'updated_at' => now()
             ],
-            // User Maste (Super Admin)
+            // User Master (Super Admin)
             [
                 'name' => 'Litensi Kids Admin',
                 'email' => 'admin@litensikids.id',
                 'phone' => '081200001111',
-                'role' => 'Maste',
+                'role' => 'Master',
                 'email_verified_at' => now(),
                 'password' => Hash::make('admin123'),
                 'avatar_url' => null,
