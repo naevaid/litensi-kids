@@ -1,0 +1,8 @@
+{
+  "name": "Litensi Kids",
+  "description": "Aplikasi Parental Control & Monitoring Anak untuk Orang Tua dengan dashboard pemantauan, notifikasi, kontrol perangkat, dan keamanan digital.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

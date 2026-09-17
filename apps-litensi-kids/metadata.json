@@ -1,0 +1,6 @@
+{
+  "name": "Litensi Kids",
+  "description": "Aplikasi pendamping khusus di perangkat/smartwatch anak yang terhubung secara real-time dengan Litensi Parent.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,257 @@
+<?php
+
+namespace Database\Seeders;
+
+use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
+
+class UsersSeeder extends Seeder
+{
+    // Mengisi data pengguna (Orang Tua) beserta password default
+    public function run(): void
+    {
+        $dataUsers = [
+            [
+                'name' => 'Ahmad Faisal',
+                'email' => 'orangtua@litensikids.id',
+                'phone' => '081234567890',
+                'role' => 'Orang Tua',
+                'email_verified_at' => now(),
+                'password' => Hash::make('password123'),
+                'avatar_url' => null,
+                'active_plan' => 'family_pro',
+                'active_plan_label' => 'Family Pro',
+                'children_count' => 2,
+                'devices_count' => 2,
+                'expires_at' => '2027-01-12',
+                'status' => 'active',
+                'last_active' => now()->subMinutes(5),
+                'created_at' => '2026-01-12 10:00:00',
+                'updated_at' => now()
+            ],
+            [
+                'name' => 'Siti Rahmawati',
+                'email' => 'siti.rahma@gmail.com',
+                'phone' => '081398765432',
+                'role' => 'Orang Tua',
+                'email_verified_at' => now(),
+                'password' => Hash::make('password123'),
+                'avatar_url' => null,
+                'active_plan' => 'premium',
+                'active_plan_label' => 'Premium',
+                'children_count' => 3,
+                'devices_count' => 3,
+                'expires_at' => '2026-08-03',
+                'status' => 'active',
+                'last_active' => now()->subHour(),
+                'created_at' => '2026-02-03 09:15:00',
+                'updated_at' => now()
+            ],
+            [
+                'name' => 'Budi Santoso',
+                'email' => 'budi.santoso@yahoo.com',
+                'phone' => '085712341234',
+                'role' => 'Orang Tua',
+                'email_verified_at' => now(),
+                'password' => Hash::make('password123'),
+                'avatar_url' => null,
+                'active_plan' => 'free',
+                'active_plan_label' => 'Free (Dasar)',
+                'children_count' => 1,
+                'devices_count' => 1,
+                'expires_at' => null,
+                'status' => 'trial',
+                'last_active' => now()->subDays(2),
+                'created_at' => '2026-02-18 14:20:00',
+                'updated_at' => now()
+            ],
+            [
+                'name' => 'Dewi Lestari',
+                'email' => 'dewi.lestari@outlook.com',
+                'phone' => '081900112233',
+                'role' => 'Orang Tua',
+                'email_verified_at' => now(),
+                'password' => Hash::make('password123'),
+                'avatar_url' => null,
+                'active_plan' => 'premium',
+                'active_plan_label' => 'Premium',
+                'children_count' => 2,
+                'devices_count' => 2,
+                'expires_at' => '2026-02-25',
+                'status' => 'suspended',
+                'last_active' => now()->subWeek(),
+                'created_at' => '2026-01-25 18:00:00',
+                'updated_at' => now()
+            ],
+            [
+                'name' => 'Hendrawan Pratama',
+                'email' => 'hendra.p@company.co.id',
+                'phone' => '081122334455',
+                'role' => 'Orang Tua',
+                'email_verified_at' => now(),
+                'password' => Hash::make('password123'),
+                'avatar_url' => null,
+                'active_plan' => 'family_pro',
+                'active_plan_label' => 'Family Pro',
+                'children_count' => 4,
+                'devices_count' => 4,
+                'expires_at' => '2027-01-01',
+                'status' => 'active',
+                'last_active' => now()->subMinutes(30),
+                'created_at' => '2026-01-01 07:30:00',
+                'updated_at' => now()
+            ],
+            [
+                'name' => 'Rina Kusuma Wardani',
+                'email' => 'rina.wardani@gmail.com',
+                'phone' => '082188776655',
+                'role' => 'Orang Tua',
+                'email_verified_at' => now(),
+                'password' => Hash::make('password123'),
+                'avatar_url' => null,
+                'active_plan' => 'premium',
+                'active_plan_label' => 'Premium',
+                'children_count' => 2,
+                'devices_count' => 2,
+                'expires_at' => '2027-02-10',
+                'status' => 'active',
+                'last_active' => now()->subMinutes(15),
+                'created_at' => '2026-02-10 11:10:00',
+                'updated_at' => now()
+            ],
+            [
+                'name' => 'Dedi Kurniawan',
+                'email' => 'dedi.kurniawan@idcloud.com',
+                'phone' => '087812998877',
+                'role' => 'Orang Tua',
+                'email_verified_at' => now(),
+                'password' => Hash::make('password123'),
+                'avatar_url' => null,
+                'active_plan' => 'family_pro',
+                'active_plan_label' => 'Family Pro',
+                'children_count' => 3,
+                'devices_count' => 3,
+                'expires_at' => '2027-01-15',
+                'status' => 'active',
+                'last_active' => now()->subHours(3),
+                'created_at' => '2026-01-15 16:45:00',
+                'updated_at' => now()
+            ],
+            [
+                'name' => 'Maya Indah Permata',
+                'email' => 'maya.indah@permatamedika.id',
+                'phone' => '081299881122',
+                'role' => 'Orang Tua',
+                'email_verified_at' => now(),
+                'password' => Hash::make('password123'),
+                'avatar_url' => null,
+                'active_plan' => 'free',
+                'active_plan_label' => 'Free (Dasar)',
+                'children_count' => 1,
+                'devices_count' => 1,
+                'expires_at' => null,
+                'status' => 'trial',
+                'last_active' => now()->subHours(4),
+                'created_at' => '2026-02-20 13:00:00',
+                'updated_at' => now()
+            ],
+            [
+                'name' => 'dr. Satria Nugroho',
+                'email' => 'satria.nugroho@rsud.go.id',
+                'phone' => '081344556677',
+                'role' => 'Orang Tua',
+                'email_verified_at' => now(),
+                'password' => Hash::make('password123'),
+                'avatar_url' => null,
+                'active_plan' => 'family_pro',
+                'active_plan_label' => 'Family Pro',
+                'children_count' => 4,
+                'devices_count' => 4,
+                'expires_at' => '2027-01-05',
+                'status' => 'active',
+                'last_active' => now()->subMinutes(10),
+                'created_at' => '2026-01-05 08:20:00',
+                'updated_at' => now()
+            ],
+            [
+                'name' => 'Lina Marlina',
+                'email' => 'lina.marlina@sekolahalam.sch.id',
+                'phone' => '085233441100',
+                'role' => 'Orang Tua',
+                'email_verified_at' => now(),
+                'password' => Hash::make('password123'),
+                'avatar_url' => null,
+                'active_plan' => 'premium',
+                'active_plan_label' => 'Premium',
+                'children_count' => 2,
+                'devices_count' => 2,
+                'expires_at' => '2027-01-28',
+                'status' => 'active',
+                'last_active' => now()->subDay(),
+                'created_at' => '2026-01-28 15:30:00',
+                'updated_at' => now()
+            ],
+            [
+                'name' => 'Fauzi Firmansyah',
+                'email' => 'fauzi.firmansyah@startup.id',
+                'phone' => '081977889900',
+                'role' => 'Orang Tua',
+                'email_verified_at' => now(),
+                'password' => Hash::make('password123'),
+                'avatar_url' => null,
+                'active_plan' => 'premium',
+                'active_plan_label' => 'Premium',
+                'children_count' => 1,
+                'devices_count' => 1,
+                'expires_at' => '2026-08-02',
+                'status' => 'active',
+                'last_active' => now()->subMinutes(45),
+                'created_at' => '2026-02-02 12:00:00',
+                'updated_at' => now()
+            ],
+            [
+                'name' => 'Wulan Guritno Sari',
+                'email' => 'wulan.gs@gmail.com',
+                'phone' => '081388771122',
+                'role' => 'Orang Tua',
+                'email_verified_at' => now(),
+                'password' => Hash::make('password123'),
+                'avatar_url' => null,
+                'active_plan' => 'free',
+                'active_plan_label' => 'Free (Dasar)',
+                'children_count' => 1,
+                'devices_count' => 1,
+                'expires_at' => null,
+                'status' => 'trial',
+                'last_active' => now()->subDays(3),
+                'created_at' => '2026-02-21 10:40:00',
+                'updated_at' => now()
+            ],
+            // User Maste (Super Admin)
+            [
+                'name' => 'Litensi Kids Admin',
+                'email' => 'admin@litensikids.id',
+                'phone' => '081200001111',
+                'role' => 'Maste',
+                'email_verified_at' => now(),
+                'password' => Hash::make('admin123'),
+                'avatar_url' => null,
+                'active_plan' => 'family_pro',
+                'active_plan_label' => 'Family Pro',
+                'children_count' => 0,
+                'devices_count' => 0,
+                'expires_at' => '2030-01-01',
+                'status' => 'active',
+                'last_active' => now(),
+                'created_at' => '2025-12-01 00:00:00',
+                'updated_at' => now()
+            ]
+        ];
+
+        // Insert satu per satu agar urutan field aman
+        foreach ($dataUsers as $user) {
+            DB::table('users')->insert($user);
+        }
+    }
+}
