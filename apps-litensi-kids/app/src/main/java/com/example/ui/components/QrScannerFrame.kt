@@ -56,8 +56,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.testTag
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -200,8 +200,8 @@ fun QrScannerFrame(
                         Text(
                             text = "Aktifkan Kamera untuk Scan QR",
                             style = MaterialTheme.typography.titleMedium.copy(
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 12.sp
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 11.sp
                             )
                         )
                     }
@@ -401,7 +401,7 @@ fun QrScannerFrame(
         // 🆕 CATATAN: Tombol Simulasi Scan QR SUDAH DIHAPUS sesuai request user!
         // Scanner sekarang bekerja REAL-TIME otomatis ketika frame QR barcode muncul di kamera (auto-detect via ML Kit).
         Text(
-            text = "Pindai otomatis — tidak perlu menekan tombol apapun",
+            text = "Masukkan Nama Anak dan pindai QR Code",
             style = MaterialTheme.typography.bodySmall.copy(
                 color = Color(0xFF64748B),
                 fontSize = 11.sp,

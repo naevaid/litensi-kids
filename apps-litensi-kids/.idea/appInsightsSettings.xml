@@ -8,10 +8,10 @@
             <InsightsFilterSettings>
               <option name="connection">
                 <ConnectionSetting>
-                  <option name="appId" value="PLACEHOLDER" />
-                  <option name="mobileSdkAppId" value="" />
-                  <option name="projectId" value="" />
-                  <option name="projectNumber" value="" />
+                  <option name="appId" value="com.parental.litensikids" />
+                  <option name="mobileSdkAppId" value="1:253925962031:android:95ee4e2aa5ce34839db1da" />
+                  <option name="projectId" value="litensi-kids" />
+                  <option name="projectNumber" value="253925962031" />
                 </ConnectionSetting>
               </option>
               <option name="signal" value="SIGNAL_UNSPECIFIED" />
