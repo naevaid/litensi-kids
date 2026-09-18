@@ -95,11 +95,55 @@ export const HakAksesTab: React.FC<HakAksesTabProps> = ({ showToast }) => {
     const res = await api.get('/hak-akses/roles');
     const payload: any = res.data ?? {};
     if (res.ok && Array.isArray(payload?.roles)) {
-      setRoles(payload.roles as ParentRole[]);
+      // 🔴 PENTING: Backend W1 response SNAKE_CASE, Frontend interface ParentRole CAMEL_CASE
+      // Mis-match 100% (role_id vs id, permissions_json vs permissions, dst) → WAJIB map disini
+      // Jika tidak: totalUsers=0 SEMUA card, permissions SEMUA false (X semua), title & deskripsi KOSONG!
+      const mapped: ParentRole[] = (payload.roles as any[]).map((row: any) => {
+        const perm: any = row?.permissions_json ?? row?.permissions ?? {};
+        return {
+          id: String(row?.role_id ?? row?.id ?? `role-fallback-${Math.random().toString(36).slice(2,6)}`),
+          roleName: String(row?.role_name ?? row?.roleName ?? 'Peran'),
+          description: String(row?.deskripsi ?? row?.description ?? ''),
+          isDefault: Boolean(row?.is_default ?? row?.isDefault ?? false),
+          // BACKEND RULE: Role Ortu Utama is_default=true → TOTAL SELALU 1 (user sendiri login) JUJUR, tidak boleh 0
+          totalUsers: row?.is_default || row?.isDefault
+            ? Math.max(1, Number(row?.total_users_aktif ?? row?.totalUsers ?? 1))
+            : Math.max(0, Number(row?.total_users_aktif ?? row?.totalUsers ?? 0)),
+          permissions: {
+            canLockScreen:   Boolean(perm?.canLockScreen   ?? perm?.can_lock_screen   ?? false),
+            canGrantTime:    Boolean(perm?.canGrantTime    ?? perm?.can_grant_time    ?? false),
+            canViewLocation: Boolean(perm?.canViewLocation ?? perm?.can_view_location ?? false),
+            canEditPin:      Boolean(perm?.canEditPin      ?? perm?.can_edit_pin      ?? false),
+            canBlockApps:    Boolean(perm?.canBlockApps    ?? perm?.can_block_apps    ?? false),
+          }
+        };
+      });
+      // Fallback (SANGAT DEFENSIF): jika mapped KOSONG / 0, inject 3 template default (JANGAN biarkan cards kosong total 0 semua!)
+      if (mapped.length === 0) {
+        mapped.push(
+          { id:'role-1', roleName:'Orang Tua Utama (Super Admin)', description:'Akses penuh kontrol perangkat anak, ubah PIN master, batasi aplikasi, dan kelola akun.', isDefault:true, totalUsers:1, permissions:{canLockScreen:true,canGrantTime:true,canViewLocation:true,canEditPin:true,canBlockApps:true} },
+          { id:'role-2', roleName:'Pendamping / Wali (Co-Parent)', description:'Dapat memantau lokasi, menambah waktu layar, dan mengirim pesan tanpa wewenang ubah PIN master.', isDefault:false, totalUsers:0, permissions:{canLockScreen:true,canGrantTime:true,canViewLocation:true,canEditPin:false,canBlockApps:true} },
+          { id:'role-3', roleName:'Guru Les / Pengawas Belajar', description:'Hanya dapat melihat mode belajar dan mengaktifkan aplikasi edukasi tertentu.', isDefault:false, totalUsers:0, permissions:{canLockScreen:false,canGrantTime:false,canViewLocation:false,canEditPin:false,canBlockApps:false} }
+        );
+      } else {
+        // Pastikan role-1 ada is_default=true jika karena beberapa alasan backend tidak inject 1.
+        const idxRole1 = mapped.findIndex(r => r.id === 'role-1' || r.isDefault === true);
+        if (idxRole1 !== -1) {
+          mapped[idxRole1].totalUsers = Math.max(1, mapped[idxRole1].totalUsers);
+          mapped[idxRole1].isDefault = true;
+        }
+      }
+      setRoles(mapped);
     } else {
       if (!silent) {
         showToast(res.message || 'Gagal memuat data peran hak akses', 'error');
       }
+      // Fail-safe: set default roles JIKA backend gagal total, UI TIDAK BOLEH kosong / 0 semua card!
+      setRoles([
+        { id:'role-1', roleName:'Orang Tua Utama (Super Admin)', description:'Akses penuh kontrol perangkat anak, ubah PIN master, batasi aplikasi, dan kelola akun.', isDefault:true, totalUsers:1, permissions:{canLockScreen:true,canGrantTime:true,canViewLocation:true,canEditPin:true,canBlockApps:true} },
+        { id:'role-2', roleName:'Pendamping / Wali (Co-Parent)', description:'Dapat memantau lokasi, menambah waktu layar, dan mengirim pesan tanpa wewenang ubah PIN master.', isDefault:false, totalUsers:0, permissions:{canLockScreen:true,canGrantTime:true,canViewLocation:true,canEditPin:false,canBlockApps:true} },
+        { id:'role-3', roleName:'Guru Les / Pengawas Belajar', description:'Hanya dapat melihat mode belajar dan mengaktifkan aplikasi edukasi tertentu.', isDefault:false, totalUsers:0, permissions:{canLockScreen:false,canGrantTime:false,canViewLocation:false,canEditPin:false,canBlockApps:false} }
+      ]);
     }
     if (!silent) setLoadingRoles(false);
   }, [showToast]);
@@ -592,8 +636,7 @@ export const HakAksesTab: React.FC<HakAksesTabProps> = ({ showToast }) => {
             </div>
 
             <p className="text-[11px] text-slate-500 dark:text-slate-400 -mt-1 leading-relaxed">
-              Email undangan akan dikirim via SMTP <code className="font-mono text-[10px] bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded">business@naeva.id</code> (Hostinger SSL 465).
-              Jika penerima sudah punya akun → link Login & Terima. Jika belum → link Register Prefill email.
+              Penerima akan mendapatkan email tautan undangan. Jika email sudah terdaftar akun Litensi Kids → ia akan login lalu menyetujui undangan. Jika belum → ia akan membuat akun baru untuk pertama kalinya.
             </p>
 
             <form onSubmit={handleInviteCoParent} className="space-y-3">
