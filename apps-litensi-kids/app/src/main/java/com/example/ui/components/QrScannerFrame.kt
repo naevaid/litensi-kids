@@ -2,10 +2,13 @@ package com.example.ui.components
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
+import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
@@ -31,7 +34,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CameraAlt
-import androidx.compose.material.icons.filled.QrCodeScanner
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -40,7 +43,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -51,6 +56,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -58,14 +64,17 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
-import androidx.lifecycle.compose.LocalLifecycleOwner
-import com.example.ui.theme.EmeraldGreen
-import com.example.ui.theme.IndigoPrimary
-import com.example.ui.theme.SkyBlueSecondary
+import com.google.mlkit.vision.barcode.BarcodeScanning
+import com.google.mlkit.vision.barcode.BarcodeScannerOptions
+import com.google.mlkit.vision.barcode.common.Barcode
+import com.google.mlkit.vision.common.InputImage
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 @Composable
 fun QrScannerFrame(
-    onSimulateScanSuccess: (rawPayload: String) -> Unit,
+    onScannedSuccess: (rawPayload: String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -80,10 +89,26 @@ fun QrScannerFrame(
         )
     }
 
+    // Debounce scanner: JANGAN callback onScannedSuccess berulang2 untuk QR SAMA dalam 3 detik terakhir
+    var lastScannedAtMs by remember { mutableLongStateOf(0L) }
+    var lastScannedPayload by remember { mutableStateOf<String?>(null) }
+    // Status "Berhasil Terdeteksi" di UI (tampilkan icon check sebentar)
+    var detectedSuccessAtMs by remember { mutableLongStateOf(0L) }
+    val detectedRecently = (System.currentTimeMillis() - detectedSuccessAtMs) < 1500L
+    val showDetectedIcon = remember(detectedSuccessAtMs) { detectedRecently }
+
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { isGranted ->
         hasCameraPermission = isGranted
+    }
+
+    // Refresh `showDetectedIcon` setiap 500ms (karena System.currentTimeMillis tidak reactive)
+    LaunchedEffect(detectedSuccessAtMs) {
+        if (detectedSuccessAtMs == 0L) return@LaunchedEffect
+        kotlinx.coroutines.delay(1500)
+        // Trigger re-composition: cukup mutate value non-visible untuk paksa refresh detikan
+        lastScannedAtMs.let { lastScannedAtMs = it + 1 }
     }
 
     val infiniteTransition = rememberInfiniteTransition(label = "laser")
@@ -97,12 +122,15 @@ fun QrScannerFrame(
         label = "laserY"
     )
 
+    // Single background thread untuk ImageAnalysis (avoid blocking main)
+    val cameraAnalysisExecutor: ExecutorService = remember { Executors.newSingleThreadExecutor() }
+
     Column(
         modifier = modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         if (!hasCameraPermission) {
-            // Camera Permission Request Card
+            // Camera Permission Request Card (jika izin kamera belum granted)
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(20.dp),
@@ -119,13 +147,13 @@ fun QrScannerFrame(
                         modifier = Modifier
                             .size(56.dp)
                             .clip(CircleShape)
-                            .background(IndigoPrimary.copy(alpha = 0.12f)),
+                            .background(Color(0xFF3F51B5).copy(alpha = 0.12f)),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = Icons.Default.CameraAlt,
                             contentDescription = null,
-                            tint = IndigoPrimary,
+                            tint = Color(0xFF3F51B5),
                             modifier = Modifier.size(28.dp)
                         )
                     }
@@ -144,7 +172,7 @@ fun QrScannerFrame(
                     Spacer(modifier = Modifier.height(4.dp))
 
                     Text(
-                        text = "Aktifkan kamera perangkat untuk memindai QR Code dari aplikasi Litensi Parent secara langsung.",
+                        text = "Aktifkan kamera perangkat untuk memindai QR Code dari dashboard Orang Tua secara langsung.",
                         style = MaterialTheme.typography.bodySmall.copy(
                             color = Color(0xFF64748B),
                             fontSize = 11.sp,
@@ -161,7 +189,7 @@ fun QrScannerFrame(
                             .height(42.dp)
                             .testTag("btn_request_camera_permission"),
                         shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = IndigoPrimary)
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3F51B5))
                     ) {
                         Icon(
                             imageVector = Icons.Default.CameraAlt,
@@ -170,7 +198,7 @@ fun QrScannerFrame(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "Aktifkan Kamera untuk Scan",
+                            text = "Aktifkan Kamera untuk Scan QR",
                             style = MaterialTheme.typography.titleMedium.copy(
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 12.sp
@@ -180,25 +208,92 @@ fun QrScannerFrame(
                 }
             }
         } else {
-            // Live CameraX Preview Frame + QR Overlay
+            // Live CameraX Preview Frame + QR Overlay (REAL SCAN, bukan simulasi)
             Box(
                 modifier = Modifier
                     .size(260.dp)
                     .clip(RoundedCornerShape(24.dp))
                     .background(Color(0xFF0F172A))
-                    .border(2.dp, SkyBlueSecondary.copy(alpha = 0.6f), RoundedCornerShape(24.dp)),
+                    .border(
+                        2.dp,
+                        if (showDetectedIcon) Color(0xFF10B981).copy(alpha = 0.8f) else Color(0xFF0EA5E9)
+                            .copy(alpha = 0.6f),
+                        RoundedCornerShape(24.dp)
+                    ),
                 contentAlignment = Alignment.Center
             ) {
-                // CameraX Preview View
+                // CameraX Preview View + ImageAnalysis Barcode REAL
                 AndroidView(
                     factory = { ctx ->
                         val previewView = PreviewView(ctx)
+                        val mainHandler = Handler(Looper.getMainLooper())
                         val cameraProviderFuture = ProcessCameraProvider.getInstance(ctx)
                         cameraProviderFuture.addListener({
-                            val cameraProvider = cameraProviderFuture.get()
+                            val cameraProvider: ProcessCameraProvider = cameraProviderFuture.get()
+
+                            // (1) Use Case PREVIEW (tampilan kamera ke user)
                             val preview = Preview.Builder().build().also {
-                                it.surfaceProvider = previewView.surfaceProvider
+                                it.setSurfaceProvider(previewView.surfaceProvider)
                             }
+
+                            // (2) Use Case IMAGE ANALYSIS → ML Kit Barcode QR SCANNER REAL
+                            // ⚠️ JANGAN pakai remember{} di dalam factory AndroidView (bukan composable scope!)
+                            val barcodeScanner = BarcodeScanning.getClient(
+                                BarcodeScannerOptions.Builder()
+                                    .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
+                                    .build()
+                            )
+                            val imageAnalysis = ImageAnalysis.Builder()
+                                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                                .build()
+                                .also { analysis ->
+                                    analysis.setAnalyzer(cameraAnalysisExecutor) { imageProxy ->
+                                        val mediaImage = imageProxy.image
+                                        if (mediaImage == null) {
+                                            imageProxy.close()
+                                            return@setAnalyzer
+                                        }
+                                        val inputImage = InputImage.fromMediaImage(
+                                            mediaImage,
+                                            imageProxy.imageInfo.rotationDegrees
+                                        )
+                                        barcodeScanner.process(inputImage)
+                                            .addOnSuccessListener { barcodes ->
+                                                val qrBarcode = barcodes.firstOrNull {
+                                                    it.format == Barcode.FORMAT_QR_CODE && it.rawValue != null
+                                                }
+                                                if (qrBarcode != null) {
+                                                    val payload = qrBarcode.rawValue!!
+                                                    val now = System.currentTimeMillis()
+                                                    val debouncePass =
+                                                        (now - lastScannedAtMs) > TimeUnit.SECONDS.toMillis(3)
+                                                    val payloadBerubah = (payload != lastScannedPayload)
+                                                    if (debouncePass || payloadBerubah) {
+                                                        // ⚠️ State Compose MUTATION harus di MAIN THREAD (bukan thread pool analyzer!)
+                                                        mainHandler.post {
+                                                            lastScannedAtMs = now
+                                                            lastScannedPayload = payload
+                                                            detectedSuccessAtMs = now
+                                                        }
+                                                        Log.d(
+                                                            "QrScannerFrame",
+                                                            "QR Terdeteksi OK, payload length=${payload.length}"
+                                                        )
+                                                        // Callback ke Parent (PairingScreen) — tetap aman walau dari bg thread
+                                                        onScannedSuccess(payload)
+                                                    }
+                                                }
+                                            }
+                                            .addOnFailureListener { _err ->
+                                                // ignore individual frame error; next frame akan dicoba lagi
+                                            }
+                                            .addOnCompleteListener {
+                                                // WAJIB close imageProxy agar frame berikutnya bisa dianalisa
+                                                imageProxy.close()
+                                            }
+                                    }
+                                }
+
                             val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
 
                             try {
@@ -206,10 +301,11 @@ fun QrScannerFrame(
                                 cameraProvider.bindToLifecycle(
                                     lifecycleOwner,
                                     cameraSelector,
-                                    preview
+                                    preview,
+                                    imageAnalysis
                                 )
                             } catch (e: Exception) {
-                                Log.e("QrScannerFrame", "Use case binding failed", e)
+                                Log.e("QrScannerFrame", "CameraX use case binding failed", e)
                             }
                         }, ContextCompat.getMainExecutor(ctx))
                         previewView
@@ -225,7 +321,7 @@ fun QrScannerFrame(
                     // Four Corner Markers for QR Alignment
                     val cornerLength = 40f
                     val strokeWidth = 8f
-                    val cornerColor = EmeraldGreen
+                    val cornerColor = if (showDetectedIcon) Color(0xFF10B981) else Color(0xFF10B981)
 
                     // Top Left
                     drawLine(cornerColor, Offset(30f, 30f), Offset(30f + cornerLength, 30f), strokeWidth)
@@ -244,21 +340,40 @@ fun QrScannerFrame(
                     drawLine(cornerColor, Offset(width - 30f, height - 30f), Offset(width - 30f, height - 30f - cornerLength), strokeWidth)
 
                     // Laser Scanning Line
-                    val currentLaserY = height * laserYRatio
-                    drawLine(
-                        brush = Brush.horizontalGradient(
-                            colors = listOf(
-                                Color.Transparent,
-                                EmeraldGreen,
-                                Color.White,
-                                EmeraldGreen,
-                                Color.Transparent
-                            )
-                        ),
-                        start = Offset(20f, currentLaserY),
-                        end = Offset(width - 20f, currentLaserY),
-                        strokeWidth = 6f
-                    )
+                    if (!showDetectedIcon) {
+                        val currentLaserY = height * laserYRatio
+                        drawLine(
+                            brush = Brush.horizontalGradient(
+                                colors = listOf(
+                                    Color.Transparent,
+                                    Color(0xFF10B981),
+                                    Color.White,
+                                    Color(0xFF10B981),
+                                    Color.Transparent
+                                )
+                            ),
+                            start = Offset(20f, currentLaserY),
+                            end = Offset(width - 20f, currentLaserY),
+                            strokeWidth = 6f
+                        )
+                    }
+                }
+
+                // (BARU) Icon Check Circle BESAR ketika QR berhasil terdeteksi (1.5 detik terlihat)
+                if (showDetectedIcon) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.Black.copy(alpha = 0.35f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.CheckCircle,
+                            contentDescription = null,
+                            tint = Color(0xFF10B981),
+                            modifier = Modifier.size(88.dp)
+                        )
+                    }
                 }
 
                 Box(
@@ -270,7 +385,7 @@ fun QrScannerFrame(
                         .padding(horizontal = 12.dp, vertical = 4.dp)
                 ) {
                     Text(
-                        text = "Arahkan Kamera ke QR Code Parent",
+                        text = if (showDetectedIcon) "QR Terdeteksi! Menghubungkan..." else "Arahkan Kamera ke QR Code Dashboard",
                         style = MaterialTheme.typography.labelSmall.copy(
                             color = Color.White,
                             fontWeight = FontWeight.Medium,
@@ -281,37 +396,18 @@ fun QrScannerFrame(
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(8.dp))
 
-        // Trigger / Confirm Scan Button
-        Button(
-            onClick = {
-                val emptyPayload = """{"t":"litensi-pair","v":1,"c":"","p":"","u":0,"ts":0}"""
-                onSimulateScanSuccess(emptyPayload)
-            },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(42.dp)
-                .testTag("btn_simulate_scan"),
-            shape = RoundedCornerShape(12.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = EmeraldGreen,
-                contentColor = Color.White
-            )
-        ) {
-            Icon(
-                imageVector = Icons.Default.QrCodeScanner,
-                contentDescription = null,
-                modifier = Modifier.size(18.dp)
-            )
-            Spacer(modifier = Modifier.width(6.dp))
-            Text(
-                text = if (hasCameraPermission) "Pindai QR & Hubungkan ✨" else "Simulasi Scan QR ✨",
-                style = MaterialTheme.typography.titleMedium.copy(
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 12.sp
-                )
-            )
-        }
+        // 🆕 CATATAN: Tombol Simulasi Scan QR SUDAH DIHAPUS sesuai request user!
+        // Scanner sekarang bekerja REAL-TIME otomatis ketika frame QR barcode muncul di kamera (auto-detect via ML Kit).
+        Text(
+            text = "Pindai otomatis — tidak perlu menekan tombol apapun",
+            style = MaterialTheme.typography.bodySmall.copy(
+                color = Color(0xFF64748B),
+                fontSize = 11.sp,
+                textAlign = TextAlign.Center
+            ),
+            modifier = Modifier.fillMaxWidth()
+        )
     }
 }

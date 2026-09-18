@@ -137,102 +137,9 @@ fun PairingScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // 🆕 SELALU tampilkan Field "Nama Panggilan Anak" DI PALING ATAS (sebelum Tab QR / Manual Kode),
-            // tanpa title helper apapun (sesuai request user visual minimalis).
-            OutlinedTextField(
-                value = childNameInput,
-                onValueChange = { childNameInput = it.take(50) },
-                label = { Text("Nama Panggilan Anak") },
-                placeholder = { Text("Contoh: Nadia, Adek, Kakak") },
-                singleLine = true,
-                shape = RoundedCornerShape(16.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = IndigoPrimary,
-                    unfocusedBorderColor = Color(0xFFCBD5E1)
-                ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("input_child_nickname")
-            )
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // Tab 1: QR Scanner Simulator Frame
+            // Tab 1: QR Scanner REAL (bukan simulasi, CameraX + ML Kit barcode)
             if (selectedTabIndex == 0) {
-                QrScannerFrame(
-                    onSimulateScanSuccess = { rawPayload ->
-                        // Parse payload QR JSON shape: {t:litensi-pair, v:1, c:"code", p:"pin", ...}
-                        try {
-                            val regexCode = """"c"\s*:\s*"([^"]+)"""".toRegex()
-                            val regexPin = """"p"\s*:\s*"([^"]+)"""".toRegex()
-                            val codeMatch = regexCode.find(rawPayload)?.groupValues?.get(1)
-                            val pinMatch = regexPin.find(rawPayload)?.groupValues?.get(1)
-                            if (!codeMatch.isNullOrBlank()) {
-                                manualCodeInput = codeMatch.uppercase()
-                            }
-                            if (!pinMatch.isNullOrBlank()) {
-                                pinInput = pinMatch
-                            }
-                        } catch (_: Exception) {
-                            // Fallback jika parsing gagal: kosongkan
-                        }
-                    }
-                )
-
-                Spacer(modifier = Modifier.height(24.dp))
-
-                // Button Hubungkan Perangkat (QR Tab Version) — TANPA Card wrapper, TANPA text helper.
-                val btnEnabledQr = !isPairingLoading
-                    && manualCodeInput.isNotBlank()
-                    && pinInput.length >= 4
-                Button(
-                    onClick = {
-                        onConnectSuccess(
-                            manualCodeInput,
-                            pinInput,
-                            parentNameInput.takeIf { it.isNotBlank() } ?: "Orang Tua",
-                            childNameInput.takeIf { it.isNotBlank() } ?: "Anak"
-                        )
-                    },
-                    enabled = btnEnabledQr,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(38.dp)
-                        .testTag("btn_connect_qr_code"),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = IndigoPrimary,
-                        contentColor = Color.White,
-                        disabledContainerColor = IndigoPrimary.copy(alpha = 0.4f),
-                        disabledContentColor = Color.White.copy(alpha = 0.7f)
-                    )
-                ) {
-                    if (isPairingLoading) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(18.dp),
-                            color = Color.White,
-                            strokeWidth = 2.dp
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            text = "Sedang Hubungkan...",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 13.sp
-                        )
-                    } else {
-                        Text(
-                            text = "Hubungkan Perangkat Sekarang",
-                            style = MaterialTheme.typography.titleMedium.copy(
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 13.sp
-                            )
-                        )
-                    }
-                }
-            } else {
-                // Tab 2: Manual Kode + PIN Pairing
-                // 🆕 Nama Panggilan Anak SUDAH di luar Card PALING ATAS (diluar if-else Tab),
-                // jadi di dalam Card Tab 2 Manual langsung mulai dari Kode + PIN + Button saja.
+                // Struktur konsisten Card: Nama Panggilan Anak (atas) → Scanner (tengah) → Button (bawah)
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(20.dp),
@@ -245,6 +152,132 @@ fun PairingScreen(
                             .padding(20.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
+                        // 🎯 1. NAMA PANGGILAN ANAK (PALING ATAS DALAM CARD, sesuai request konsistensi)
+                        OutlinedTextField(
+                            value = childNameInput,
+                            onValueChange = { childNameInput = it.take(50) },
+                            label = { Text("Nama Panggilan Anak") },
+                            placeholder = { Text("Contoh: Nadia, Adek, Kakak") },
+                            singleLine = true,
+                            shape = RoundedCornerShape(16.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = IndigoPrimary,
+                                unfocusedBorderColor = Color(0xFFCBD5E1)
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("input_child_nickname")
+                        )
+
+                        Spacer(modifier = Modifier.height(20.dp))
+
+                        // 2. QR Scanner Frame REAL (auto-detect, TIDAK ADA tombol simulasi lagi)
+                        QrScannerFrame(
+                            onScannedSuccess = { rawPayload ->
+                                // Parse payload QR JSON shape: {t:"litensi-pair", v:1, c:"LTN-CODE-X", p:"123456", ...}
+                                try {
+                                    val regexCode = """"c"\s*:\s*"([^"]+)"""".toRegex()
+                                    val regexPin = """"p"\s*:\s*"([^"]+)"""".toRegex()
+                                    val codeMatch = regexCode.find(rawPayload)?.groupValues?.get(1)
+                                    val pinMatch = regexPin.find(rawPayload)?.groupValues?.get(1)
+                                    if (!codeMatch.isNullOrBlank()) {
+                                        manualCodeInput = codeMatch.uppercase()
+                                    }
+                                    if (!pinMatch.isNullOrBlank()) {
+                                        pinInput = pinMatch
+                                    }
+                                } catch (_: Exception) {
+                                    // Fallback jika parsing gagal: kosongkan
+                                }
+                            }
+                        )
+
+                        Spacer(modifier = Modifier.height(20.dp))
+
+                        // 3. Button Hubungkan Perangkat (QR Tab Version)
+                        val btnEnabledQr = !isPairingLoading
+                            && manualCodeInput.isNotBlank()
+                            && pinInput.length >= 4
+                        Button(
+                            onClick = {
+                                onConnectSuccess(
+                                    manualCodeInput,
+                                    pinInput,
+                                    parentNameInput.takeIf { it.isNotBlank() } ?: "Orang Tua",
+                                    childNameInput.takeIf { it.isNotBlank() } ?: "Anak"
+                                )
+                            },
+                            enabled = btnEnabledQr,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(38.dp)
+                                .testTag("btn_connect_qr_code"),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = IndigoPrimary,
+                                contentColor = Color.White,
+                                disabledContainerColor = IndigoPrimary.copy(alpha = 0.4f),
+                                disabledContentColor = Color.White.copy(alpha = 0.7f)
+                            )
+                        ) {
+                            if (isPairingLoading) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(18.dp),
+                                    color = Color.White,
+                                    strokeWidth = 2.dp
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    text = "Sedang Hubungkan...",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp
+                                )
+                            } else {
+                                Text(
+                                    text = "Hubungkan Perangkat Sekarang",
+                                    style = MaterialTheme.typography.titleMedium.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 13.sp
+                                    )
+                                )
+                            }
+                        }
+                    }
+                }
+            } else {
+                // Tab 2: Manual Kode + PIN Pairing
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(20.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        // 🎯 1. NAMA PANGGILAN ANAK — TEPAT DI ATAS field Kode Pairing (DALAM CARD YANG SAMA)
+                        // SESUAI REQUEST USER: "field Nama Panggilan anak, pindahkan tepat diatas field Kode Paing (dalam card yang sama)"
+                        OutlinedTextField(
+                            value = childNameInput,
+                            onValueChange = { childNameInput = it.take(50) },
+                            label = { Text("Nama Panggilan Anak") },
+                            placeholder = { Text("Contoh: Nadia, Adek, Kakak") },
+                            singleLine = true,
+                            shape = RoundedCornerShape(16.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = IndigoPrimary,
+                                unfocusedBorderColor = Color(0xFFCBD5E1)
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("input_child_nickname")
+                        )
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
                         Text(
                             text = "Masukkan Kode Pairing dan PIN",
                             style = MaterialTheme.typography.titleMedium.copy(
@@ -254,7 +287,7 @@ fun PairingScreen(
                         )
 
                         Text(
-                            text = "Dapatkan kode + PIN dari aplikasi Litensi Parent di HP Orang Tua",
+                            text = "Dapatkan kode + PIN dari dashboard Orang Tua di web",
                             style = MaterialTheme.typography.bodySmall.copy(
                                 color = Color(0xFF64748B),
                                 textAlign = TextAlign.Center
