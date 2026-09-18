@@ -35,6 +35,8 @@ class User extends Authenticatable
         'expires_at',
         'status',
         'last_active',
+        'web_fcm_token',
+        'web_fcm_token_updated_at',
     ];
 
     /**

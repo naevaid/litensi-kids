@@ -55,6 +55,8 @@ Route::prefix('v1')->group(function () {
         Route::post('/update', [ProfilController::class, 'updateProfil']);
         Route::post('/foto', [ProfilController::class, 'uploadFotoProfil']);
         Route::post('/foto/hapus', [ProfilController::class, 'hapusFotoProfil']);
+        // F3.WEB — Update token FCM Web Push (Browser Orang Tua). Auth via user_id param.
+        Route::post('/web-fcm-token', [ProfilController::class, 'updateWebFcmToken']);
     });
 
     // === Modul Audio & Video Monitor (AV1-AV5: Kuota Listen + Camera Gabung 1 Kolam) ===
@@ -141,6 +143,10 @@ Route::prefix('v1')->group(function () {
         // AN8 — Upload telemetry dari Companion App Android (battery, online, used_today)
         // Spesifik 3 segment URL, HARUS sebelum wildcard /anak/{id} agar tidak terintersepsi!
         Route::post('/{id}/telemetry', [AnakController::class, 'uploadTelemetry'])->whereNumber('id');
+        // F3.ANDROID — Update token FCM perangkat Android Companion Anak.
+        // Spesifik 3 segment URL, HARUS sebelum wildcard /anak/{id}.
+        // GATE OWNERSHIP: Endpoint di AnakController mewajibkan pairing_pin ATAU qr_pairing_code cocok → 403 jika salah.
+        Route::post('/{id}/fcm-token', [AnakController::class, 'updateFcmTokenAnak'])->whereNumber('id');
 
         Route::get('/', [AnakController::class, 'index']);
         Route::get('/{id}', [AnakController::class, 'show'])->whereNumber('id');

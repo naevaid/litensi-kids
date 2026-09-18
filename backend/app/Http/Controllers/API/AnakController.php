@@ -480,6 +480,63 @@ class AnakController extends Controller
         ]);
     }
 
+    // F3.ANDROID — Update token FCM perangkat Android Companion Anak
+    // Digunakan oleh FirebaseMessagingService.onNewToken() di Android
+    // Endpoint: POST /api/v1/anak/{id}/fcm-token
+    // GATE OWNERSHIP: Wajib kirim pairing_pin ATAU qr_pairing_code yang cocok → 403 jika salah
+    public function updateFcmTokenAnak(Request $request, int $id): JsonResponse
+    {
+        $anak = ProfilAnak::findOrFail($id);
+
+        $validated = $request->validate([
+            // Validasi kepemilikan perangkat: salah satu field WAJIB dikirim & cocok
+            'qr_pairing_code' => 'sometimes|string|max:50',
+            'pairing_pin' => 'sometimes|string|max:10',
+            // Token FCM Android: boleh null jika user revoke / app uninstall
+            'fcm_token' => 'nullable|string|max:1000',
+        ]);
+
+        // Gate kepemilikan: jika salah satu dikirim, WAJIB cocok dengan row
+        if (!empty($validated['qr_pairing_code']) && $validated['qr_pairing_code'] !== $anak->qr_pairing_code) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validasi kepemilikan gagal: qr_pairing_code tidak cocok dengan perangkat ini.',
+            ], 403);
+        }
+        if (!empty($validated['pairing_pin']) && $validated['pairing_pin'] !== $anak->pairing_pin) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validasi kepemilikan gagal: pairing_pin tidak cocok dengan perangkat ini.',
+            ], 403);
+        }
+        // Minimal salah satu dari qr_pairing_code ATAU pairing_pin HARUS dikirim (tidak boleh kosong dua-duanya)
+        if (empty($validated['qr_pairing_code']) && empty($validated['pairing_pin'])) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validasi kepemilikan gagal: wajib kirim pairing_pin ATAU qr_pairing_code.',
+            ], 403);
+        }
+
+        // Normalisasi token: jika string kosong / hanya spasi → set NULL (revoke)
+        $newToken = filled($validated['fcm_token']) ? trim($validated['fcm_token']) : null;
+
+        $anak->update([
+            'fcm_token' => $newToken,
+            'last_active' => now(),
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Token FCM perangkat anak berhasil diupdate',
+            'data' => [
+                'id' => $anak->id,
+                'fcm_token_length' => strlen($newToken ?? ''),
+                'token_revoked' => $newToken === null,
+                'updated_at' => now()->toISOString(),
+            ],
+        ]);
+    }
+
     // Hapus profil anak
     public function destroy(int $id): JsonResponse
     {

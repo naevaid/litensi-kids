@@ -230,4 +230,52 @@ class ProfilController extends Controller
             ],
         ]);
     }
+
+    /**
+     * F3.WEB — Update token FCM Web Push (Browser Orang Tua)
+     * Dipanggil oleh frontend setelah user izinkan notifikasi browser via firebase messaging.
+     * Endpoint: POST /api/v1/profil/web-fcm-token
+     * Auth: user_id param (pattern sama dengan updateProfil / uploadFotoProfil)
+     */
+    public function updateWebFcmToken(Request $request): JsonResponse
+    {
+        // Zero Assumption auth: inject user_id dari request param
+        $userId = $request->input('user_id');
+        if (empty($userId) || !is_numeric($userId)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'user_id tidak valid atau belum login',
+            ], 401);
+        }
+        $userId = (int) $userId;
+
+        $validasi = $request->validate([
+            // Token FCM Web Push: boleh null/string kosong = user revoke notifikasi browser
+            'web_fcm_token' => 'nullable|string',
+        ]);
+
+        $user = User::find($userId);
+        if (!$user) {
+            return response()->json(['success' => false, 'message' => 'User tidak ditemukan'], 404);
+        }
+
+        // Normalisasi token: jika string kosong / hanya spasi → set NULL (revoke)
+        $newToken = filled($validasi['web_fcm_token']) ? trim($validasi['web_fcm_token']) : null;
+
+        $user->update([
+            'web_fcm_token' => $newToken,
+            // Timestamp HANYA di-update JIKA token baru non-null
+            'web_fcm_token_updated_at' => $newToken ? now() : null,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Token FCM Web Push berhasil diupdate',
+            'data' => [
+                'fcm_web_token_length' => strlen($newToken ?? ''),
+                'token_revoked' => $newToken === null,
+                'updated_at' => $user->web_fcm_token_updated_at?->toISOString(),
+            ],
+        ]);
+    }
 }
