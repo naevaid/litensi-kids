@@ -1,4 +1,37 @@
-export type Page = 'landing' | 'login' | 'register' | 'forgot' | 'dashboard' | 'privacy' | 'terms';
+// ============================================================
+// DAFTAR PAGE HALAMAN UTAMA (Top-level di App.tsx)
+// NOTE: Tambah nilai BARU di sini jika ada halaman utama baru,
+// beserta mapping URL Hash (lihat src/lib/hashRouter.ts)
+// ============================================================
+export type Page =
+  // Publik (tidak butuh login)
+  | 'landing'
+  | 'login'
+  | 'register'
+  | 'forgot'
+  | 'privacy'
+  | 'terms'
+  // Setelah login (di dalam AdminDashboard tabs wrapper)
+  | 'dashboard'
+  | 'anak'
+  | 'monitor'
+  | 'aplikasi'
+  | 'geofence'
+  | 'notifikasi'
+  | 'inbox'
+  | 'pengumuman'
+  | 'profil_saya'
+  | 'pengaturan'
+  // Master / Owner Only
+  | 'master_paket'
+  | 'master_pengguna'
+  | 'master_pendapatan'
+  | 'master_sistem';
+
+// ============================================================
+// Sub-tab Pengaturan (di dalam halaman /#/pengaturan/<subtab>)
+// ============================================================
+export type PengaturanSubTab = 'hak_akses' | 'langganan_saya';
 
 export interface User {
   id?: number;
@@ -14,6 +47,8 @@ export interface User {
   status?: string;
   phone?: string;
   lastActive?: string;
+  pinMasterExists?: boolean; // true jika user sudah set PIN Master (JANGAN kirim actual pin value!)
+  pinMaster?: string | null; // HANYA untuk keperluan form input, NEVER disimpan / dikembalikan dari API
 }
 
 export interface StatItem {

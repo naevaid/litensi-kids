@@ -88,10 +88,15 @@ class AuthController extends Controller
         // Update last_active
         $user->update(['last_active' => now()]);
 
+        // Data user SENSITIF HIDDEN (password, pin_master, remember_token)
+        $userData = $user->makeHidden(['password', 'remember_token', 'pin_master'])->toArray();
+        // Tambah info flag (bukan actual value!) agar frontend tahu PIN sudah diset atau belum
+        $userData['pin_master_exists'] = !empty($user->pin_master);
+
         return response()->json([
             'success' => true,
             'data' => [
-                'user' => $user->makeHidden(['password', 'remember_token']),
+                'user' => $userData,
             ],
         ]);
     }

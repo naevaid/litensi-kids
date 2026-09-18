@@ -23,6 +23,7 @@ class User extends Authenticatable
         'name',
         'email',
         'phone',
+        'pin_master',
         'role',
         'email_verified_at',
         'password',
@@ -38,11 +39,13 @@ class User extends Authenticatable
 
     /**
      * Kolom yang disembunyikan saat serialisasi.
+     * SENSITIF: JANGAN PERNAH kirim pin_master dan password ke JSON response publik!
      *
      * @var list<string>
      */
     protected $hidden = [
         'password',
+        'pin_master',
         'remember_token',
     ];
 

@@ -250,4 +250,121 @@ export const api = {
 
   del: <T = any>(endpoint: string, opts?: Partial<RequestOptions>) =>
     apiClient<T>(endpoint, { method: 'DELETE', ...opts }),
+
+  /**
+   * Profile Module — Endpoint halaman Profil Saya
+   * (Backend: API/ProfilController.php)
+   */
+  profile: {
+    /** Update data profil: name, email, phone, pin_master (4-6 digit numeric) */
+    update: <T = any>(payload: {
+      name: string;
+      email: string;
+      phone?: string | null;
+      pin_master?: string | null;
+    }) =>
+      api.post<T>('/profil/update', payload),
+
+    /**
+     * Upload foto profil (Client sudah compress sebelumnya via compressImageClient).
+     * Backend: Kompres ULANG ke 800x800 JPEG q85 + hapus foto lama lokal jika ada.
+     */
+    uploadPhoto: <T = any>(file: Blob | File, filename: string = 'photo.jpg') => {
+      const fd = new FormData();
+      fd.append('photo', file, filename);
+      return api.post<T>('/profil/foto', fd);
+    },
+
+    /** Hapus foto profil user → kembali ke avatar default */
+    deletePhoto: <T = any>() => api.post<T>('/profil/foto/hapus', {}),
+  },
 };
+
+// ==========================================================================
+// Helper: Compress gambar CLIENT-SIDE via HTML5 Canvas (sebelum upload ke server)
+// Tujuan: Kurangi size upload (hemat bandwidth).
+// Server tetap KOMPRES ULANG (Intervention 800x800 q85) — ini lapisan pertama saja.
+// ==========================================================================
+export async function compressImageClient(
+  file: File,
+  opts: { maxWidth?: number; maxHeight?: number; quality?: number; mime?: string } = {}
+): Promise<{ blob: Blob; width: number; height: number; originalSizeKB: number; compressedSizeKB: number }> {
+  const maxWidth = opts.maxWidth ?? 1280;
+  const maxHeight = opts.maxHeight ?? 1280;
+  const quality = opts.quality ?? 0.85;
+  const mime = opts.mime ?? 'image/jpeg';
+
+  const originalSizeKB = Math.round(file.size / 1024);
+
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Gagal baca file gambar'));
+    reader.onload = (evt) => {
+      const img = new Image();
+      img.onerror = () => reject(new Error('File bukan gambar yang valid'));
+      img.onload = () => {
+        // Scale down preserve aspect ratio (no upscale)
+        let { width, height } = img;
+        const ratio = Math.min(maxWidth / width, maxHeight / height, 1);
+        width = Math.round(width * ratio);
+        height = Math.round(height * ratio);
+
+        // Draw ke Canvas
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          reject(new Error('Browser tidak support Canvas 2D'));
+          return;
+        }
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(img, 0, 0, width, height);
+
+        canvas.toBlob(
+          (blob) => {
+            if (!blob) {
+              reject(new Error('Gagal generate blob canvas'));
+              return;
+            }
+            resolve({
+              blob,
+              width,
+              height,
+              originalSizeKB,
+              compressedSizeKB: Math.round(blob.size / 1024),
+            });
+          },
+          mime,
+          quality
+        );
+      };
+      img.src = evt.target?.result as string;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+// ==========================================================================
+// Helper: Mapper snake_case Laravel DB → camelCase TypeScript (khusus User object)
+// ==========================================================================
+export function mapDbUserToTsUser(dbUser: Record<string, any>): import('../../types').User {
+  return {
+    id: dbUser.id,
+    name: dbUser.name,
+    email: dbUser.email,
+    role: dbUser.role,
+    avatarUrl: dbUser.avatar_url ?? dbUser.avatarUrl,
+    activePlan: dbUser.active_plan ?? dbUser.activePlan,
+    activePlanLabel: dbUser.active_plan_label ?? dbUser.activePlanLabel,
+    childrenCount: Number(dbUser.children_count ?? dbUser.childrenCount ?? 0),
+    devicesCount: Number(dbUser.devices_count ?? dbUser.devicesCount ?? 0),
+    expiresAt: dbUser.expires_at ?? dbUser.expiresAt,
+    status: dbUser.status,
+    phone: dbUser.phone,
+    lastActive: dbUser.last_active ?? dbUser.lastActive,
+    pinMasterExists: !!dbUser.pin_master_exists ?? !!dbUser.pinMasterExists,
+    pinMaster: null, // NEVER kirim actual pin value, client tidak butuh
+  };
+}

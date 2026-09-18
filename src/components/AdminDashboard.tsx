@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { useTheme } from './ThemeContext';
 import { useToast } from './ToastContext';
-import { Page, User as UserType } from '../types';
+import { Page, User as UserType, PengaturanSubTab } from '../types';
 import { SidebarMenu } from './common/SidebarMenu';
 import { NotificationDropdown } from './common/NotificationDropdown';
 import { DashboardOverviewPage } from './dashboard/DashboardOverviewPage';
@@ -20,18 +20,21 @@ import { ChatInboxPage } from './inbox/ChatInboxPage';
 import { BroadcastPage } from './inbox/BroadcastPage';
 import { PengumumanPage } from './pengumuman/PengumumanPage';
 import { ProfilSayaPage } from './profil/ProfilSayaPage';
-import { KelolaPengaturanPage, PengaturanSubTab } from './pengaturan/KelolaPengaturanPage';
+import { KelolaPengaturanPage } from './pengaturan/KelolaPengaturanPage';
 import { MasterPaketPage } from './master/MasterPaketPage';
 import { MasterPenggunaPage } from './master/MasterPenggunaPage';
 import { MasterPendapatanPage } from './master/MasterPendapatanPage';
 import { MasterSistemPage } from './master/MasterSistemPage';
 
 import { getSessionUser } from '../lib/apiClient';
+import { parseHashRoute } from '../lib/hashRouter';
 
 interface AdminDashboardProps {
   user?: UserType;
   onLogout: () => void;
-  onNavigate: (page: Page) => void;
+  onNavigate: (page: Page, opts?: any) => void;
+  initialPage?: Page;
+  onSyncSubHash?: (tab: string, sub?: PengaturanSubTab | 'chat' | 'broadcast') => void;
 }
 
 const defaultParentUser: UserType = (() => {
@@ -72,11 +75,28 @@ const defaultParentUser: UserType = (() => {
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   user = defaultParentUser,
   onLogout,
-  onNavigate
+  onNavigate,
+  initialPage = 'dashboard',
+  onSyncSubHash,
 }) => {
   const currentUser: UserType = user || defaultParentUser;
   const { theme, toggleTheme } = useTheme();
   const { showToast } = useToast();
+
+  // --- HELPER MAPPING: Page (types.ts) ↔ activeTab internal ↔ slug URL hash ---
+  // Page (profil_saya) <> activeTab internal ('profil') <> slug url ('profil-saya')
+  const pageToActiveTab = (p: Page): string => {
+    if (p === 'profil_saya') return 'profil';
+    return String(p); // dashboard, anak, monitor, pengaturan, master_paket, dst sama persis
+  };
+  const activeTabToSlug = (tab: string): string => {
+    if (tab === 'profil') return 'profil-saya';
+    return tab; // dashboard → dashboard, master_paket → master_paket (SLUG di App.tsx ada map master-paket juga)
+  };
+  const activeTabToPage = (tab: string): Page => {
+    if (tab === 'profil') return 'profil_saya';
+    return tab as Page;
+  };
 
   // Cek role ASLI user dari session DB (bukan cuma toggle UI mode)
   const rawSession = getSessionUser();
@@ -94,6 +114,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   console.debug('[AdminDashboard] currentUser.role label display:', currentUser.role);
   console.groupEnd();
 
+  // --- STATE TAB/NAVIGASI (INIT nanti di useEffect onMount dari initialPage + hash suffix) ---
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [activeInboxSubTab, setActiveInboxSubTab] = useState<'chat' | 'broadcast'>('chat');
   // Subtab Pengaturan default = Langganan Keluarga Saya (item PERTAMA di sidebar, Proteksi Anak DIHAPUS)
@@ -102,6 +123,42 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [isMobileOrTablet, setIsMobileOrTablet] = useState(false);
   const [showUserDropdown, setShowUserDropdown] = useState(false);
   const [showNotificationDropdown, setShowNotificationDropdown] = useState(false);
+
+  // ==========================================================================
+  // [INIT] USEFFECT ON MOUNT: Parse initialPage props + PATHNAME URL (browser history mode)
+  // Tujuan: Buka /profil-saya → F5 reload → tetap Profil Saya (bukan dashboard)
+  // ==========================================================================
+  useEffect(() => {
+    const parsed = parseHashRoute(window.location.pathname, {
+      isLoggedIn: Boolean(rawSession && rawSession.id > 0),
+      fallbackAuthPage: 'dashboard',
+    });
+    console.groupCollapsed('%c[AdminDashboard] onMount Init Routing (Browser History Path Sync)', 'color:#2563eb;font-weight:700');
+    console.debug('[AdminDashboard] props.initialPage =', initialPage);
+    console.debug('[AdminDashboard] parseBrowserRoute window.pathname → page=%s sub_pengaturan=%s sub_inbox=%s',
+      parsed.page, parsed.pengaturanSub ?? '(default)', parsed.inboxSub ?? '(default)');
+
+    // 1. Set activeTab dari initialPage props (source of truth dari App.tsx top-level)
+    const initTab = pageToActiveTab(initialPage);
+    setActiveTab(initTab);
+
+    // 2. Set subtab Pengaturan / Inbox dari path suffix
+    if (parsed.pengaturanSub) {
+      setActivePengaturanSubTab(parsed.pengaturanSub);
+    }
+    if (parsed.inboxSub) {
+      setActiveInboxSubTab(parsed.inboxSub);
+    }
+
+    // 3. Sync push URL path sekali (jika ada mismatch)
+    const slug = activeTabToSlug(initTab);
+    const opts: any = {};
+    if (initTab === 'pengaturan') opts.pengaturanSub = parsed.pengaturanSub ?? activePengaturanSubTab;
+    if (initTab === 'inbox') opts.inboxSub = parsed.inboxSub ?? activeInboxSubTab;
+    onSyncSubHash?.(slug, opts.pengaturanSub ?? opts.inboxSub);
+    console.groupEnd();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // <-- HANYA JALAN SEKALI SAAT MOUNT
 
   // Active Role Mode: HANYA user Master asli yang boleh memilih 'master'. User Orang Tua LOCKED 'orangtua'.
   const [activeRoleMode, setActiveRoleMode] = useState<'master' | 'orangtua'>(() => {
@@ -175,6 +232,47 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  // ==========================================================================
+  // [ROUTING] EVENT POPSTATE: User klik Back / Forward browser
+  // (App.tsx handle top-level page change, DI SINI kita handle perubahan SUBTAB suffix)
+  // ==========================================================================
+  useEffect(() => {
+    const handlePopState = () => {
+      const isLogin = Boolean(rawSession && rawSession.id > 0);
+      const parsed = parseHashRoute(window.location.pathname, {
+        isLoggedIn: isLogin,
+        fallbackAuthPage: 'dashboard',
+      });
+      console.debug('[AdminDashboard] popstate → page=%s sub_pengaturan=%s sub_inbox=%s',
+        parsed.page, parsed.pengaturanSub ?? '', parsed.inboxSub ?? '');
+      const targetTab = pageToActiveTab(parsed.page);
+      setActiveTab((prev) => (prev === targetTab ? prev : targetTab));
+      if (parsed.pengaturanSub) {
+        setActivePengaturanSubTab((prev) => (prev === parsed.pengaturanSub ? prev : parsed.pengaturanSub!));
+      }
+      if (parsed.inboxSub) {
+        setActiveInboxSubTab((prev) => (prev === parsed.inboxSub ? prev : parsed.inboxSub!));
+      }
+    };
+    window.addEventListener('popstate', handlePopState, { passive: true });
+    return () => window.removeEventListener('popstate', handlePopState);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ==========================================================================
+  // [ROUTING] STATE WATCH → SINKRONKAN ke URL hash via callback
+  // Setiap state (activeTab / SubTabs berubah → push ke hash URL (replaceState no history spam)
+  // ==========================================================================
+  useEffect(() => {
+    const slug = activeTabToSlug(activeTab);
+    let sub: PengaturanSubTab | 'chat' | 'broadcast' | undefined;
+    if (activeTab === 'pengaturan') sub = activePengaturanSubTab;
+    else if (activeTab === 'inbox') sub = activeInboxSubTab;
+    console.debug('[AdminDashboard] stateChange → sync onSyncSubHash(slug=%s, sub=%s)', slug, sub ?? '(none)');
+    onSyncSubHash?.(slug, sub);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, activePengaturanSubTab, activeInboxSubTab, onSyncSubHash]);
+
   const handleSelectMenu = (menuId: string, subId?: string) => {
     if (!isRealMasterAccount && (menuId.startsWith('master_') || menuId === 'pengumuman')) {
       console.warn('[AdminDashboard] Akses ditolak: User biasa mencoba akses menu Master →', menuId);
@@ -193,6 +291,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     if (isMobileOrTablet) {
       setIsSidebarOpen(false);
     }
+    // [SYNC HASH: state di akhir (useEffect watch juga akan sync, tapi tidak ada salahnya double confirm disini agar
+    // tidak apa dilakukan agar terupdate segera tanpa menunggu effect jalan useEffect, khusus untuk handleSelectMenu)
   };
 
   return (
@@ -410,7 +510,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                 <button
                   type="button"
-                  onClick={() => setActiveTab('profil')}
+                  onClick={() => {
+                    handleSelectMenu('profil');
+                    setShowUserDropdown(false);
+                  }}
                   className="w-full px-3 py-2 text-left text-xs font-normal text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors flex items-center gap-2 cursor-pointer"
                 >
                   <User className="w-4 h-4 text-indigo-500" />
@@ -419,7 +522,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                 <button
                   type="button"
-                  onClick={() => setActiveTab('pengaturan')}
+                  onClick={() => {
+                    handleSelectMenu('pengaturan');
+                    setShowUserDropdown(false);
+                  }}
                   className="w-full px-3 py-2 text-left text-xs font-normal text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors flex items-center gap-2 cursor-pointer"
                 >
                   <Settings className="w-4 h-4 text-slate-400" />

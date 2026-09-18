@@ -1,10 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Shield, Sparkles } from 'lucide-react';
+import type { PengaturanSubTab } from '../../types';
 import { HakAksesTab } from './HakAksesTab';
 import { LanggananSayaTab } from './LanggananSayaTab';
-
-// Tab Proteksi Anak (sebelumnya 'konfigurasi') DIHAPUS sesuai permintaan user: "tab/halaman Proteksi Anak, sepertinya tidak diperlukan, bisa dihapus tidak masalah"
-export type PengaturanSubTab = 'hak_akses' | 'langganan_saya';
 
 export interface KelolaPengaturanPageProps {
   initialSubTab?: PengaturanSubTab;

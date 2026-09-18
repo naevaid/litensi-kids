@@ -10,6 +10,7 @@ use App\Http\Controllers\API\MasterUserController;
 use App\Http\Controllers\API\NotifikasiController;
 use App\Http\Controllers\API\PaketController;
 use App\Http\Controllers\API\PengumumanController;
+use App\Http\Controllers\API\ProfilController;
 use Illuminate\Support\Facades\Route;
 
 // === PREFIX /api/v1 ===
@@ -42,6 +43,14 @@ Route::prefix('v1')->group(function () {
         Route::get('/', [DashboardController::class, 'index']);
         Route::get('/weekly-stats', [DashboardController::class, 'weeklyStats']);
         Route::get('/paket-options', [DashboardController::class, 'paketOptions']);
+    });
+
+    // === Profil Orang Tua (Edit Data + Foto + PIN Master) ===
+    // Urutan: HARUS sebelum route group yang punya wildcard {id} agar tidak salah match
+    Route::prefix('profil')->group(function () {
+        Route::post('/update', [ProfilController::class, 'updateProfil']);
+        Route::post('/foto', [ProfilController::class, 'uploadFotoProfil']);
+        Route::post('/foto/hapus', [ProfilController::class, 'hapusFotoProfil']);
     });
 
     // === Modul Kelola Anak (ProfilAnak) ===

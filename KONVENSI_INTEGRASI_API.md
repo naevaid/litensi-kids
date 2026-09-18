@@ -241,6 +241,23 @@ interface ApiResponse<T> {
 
 ---
 
+### 2.12 MODUL PROFIL (Update Data + Foto Profil + PIN Master)
+> **Catatan Penting Security**: Kolom `pin_master` users **SELALU disembunyikan dari JSON response** via `User.php $hidden` (line hidden: password, pin_master, remember_token). Frontend HANYA menerima flag boolean `pin_master_exists` — JANGAN PERNAH mengandalkan / mengirim actual pin digit dari API (read protection).
+>
+> **Double Compress Workflow (Client + Server)**: Foto di-compress 2x agar hemat bandwidth + storage: (1) Client Canvas API `compressImageClient()` 1280px q88 sebelum upload (info size ratio ditampilkan di badge emerald UI), (2) Server Intervention Image `scaleDown(800,800)` encode JPEG q85 final sebelum disimpan ke `storage/app/public/profil/`.
+>
+> **Auto-Delete Old Photo Safe Logic**: Hanya hapus file storage lokal jika URL pattern `storage/profil/` atau `profil/`. **JANGAN hapus external URL (Unsplash default avatar)** — dicek via `Storage::disk('public')->exists($cleanPath)` terlebih dahulu.
+>
+> **Flag `pin_master_exists` Inject di Auth `/me`**: Setiap login (POST /auth/login + GET /auth/me) response sudah otomatis menambahkan field boolean ini (tanpa nilai actual pin!). Lihat [AuthController L86-L102](file:///d:/litensi-kids/backend/app/Http/Controllers/API/AuthController.php#L86-L102).
+
+| # | HTTP Method | Endpoint | Auth | Param | Response res.data | Source |
+|---|---|---|---|---|---|---|
+| P1 | POST | `/profil/update` (JSON Body) | ✅ | `user_id (int)`, `name (required string max 255)`, `email (required email, UNIQUE:users,email,user_id — tidak bisa pakai email user lain)`, `phone (nullable string max 20)`, `pin_master (nullable, MIN 4 digit MAX 6 digit HANYA ANGKA regex /^[0-9]+$/)`. **Update pin_master HANYA jika field dikirim DAN TIDAK KOSONG** (kalau user mau hapus PIN? fitur belum ada, untuk clear kirim string kosong maka update di-skip). | `{ user: (hidden password/pin_master/remember_token, auto-inject field pin_master_exists:bool), pin_master_exists (top-level juga ada) }` + HTTP 400/401/404 dengan `{ success, message }` untuk error validasi / user not found. | [ProfilController L19-L72](file:///d:/litensi-kids/backend/app/Http/Controllers/API/ProfilController.php#L19-L72) |
+| P2 | POST | `/profil/foto` (**Content-Type: multipart/form-data**) | ✅ | `user_id (int)`, `photo (required FILE, mime: jpeg/jpg/png/webp, MAX 10MB = 10240 KB — karena akan di-compress server, user bisa upload foto HD sampai batas ini). **Frontend REKOMENDASI pre-compress client-side dulu 1280px q88 via `compressImageClient()` agar bandwidth upload hemat**! | `{ avatar_url: string (full public asset URL → simpan ke session state user.avatarUrl), file_size_kb: float (ukuran final setelah server compress q85 800px → bandingkan original size client untuk info compress panel UI), old_photo_deleted: bool (true jika foto lama storage profil/ berhasil dihapus, false jika foto Unsplash default / tidak ada lama), user: {... updated, pin_master_exists} }` | [ProfilController L78-L188](file:///d:/litensi-kids/backend/app/Http/Controllers/API/ProfilController.php#L78-L188) |
+| P3 | POST | `/profil/foto/hapus` (hapus avatar → reset default) | ✅ | `user_id (int)` — TIDAK ADA body lain, tanpa file. | `{ old_photo_deleted: bool (true = file lokal berhasil dihapus, false = tidak ada / default Unsplash), user: { avatar_url:null, name, email,... pin_master_exists:bool } }` — Frontend harus set currentUser.avatarUrl = undefined / kosongkan bukan placeholder hardcode. | [ProfilController L194-L232](file:///d:/litensi-kids/backend/app/Http/Controllers/API/ProfilController.php#L194-L232) |
+
+---
+
 ## 3. 🚦 KONVENSI ROUTER LARAVEL (MENGHINDARI HTTP 500 TYPEERROR)
 > **Root Cause Bug Terdahulu**: Route wildcard `/paket/{id}` dideklarasikan DULU sebelum `/paket/mine` → `/paket/mine` URL cuma match WILDCARD DULU (top-down first-match) → call `show("mine")` dengan typed arg `show(int $id)` → **PHP 8 TypeError HTTP 500**. TIDAK TERDETEKSI via CLI App::make controller (karena lewat router!).
 
