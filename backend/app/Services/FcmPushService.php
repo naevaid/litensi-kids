@@ -254,7 +254,7 @@ class FcmPushService
         $anakRows = ProfilAnak::where('user_id', $userId)
             ->whereNotNull('fcm_token')
             ->where('fcm_token', '!=', '')
-            ->select(['id', 'nama_panggilan', 'fcm_token'])
+            ->select(['id', 'name', 'fcm_token'])
             ->get();
 
         foreach ($anakRows as $anak) {
@@ -262,7 +262,7 @@ class FcmPushService
             // Tambah meta anak ke payload data untuk client side filter
             $perAnakData = array_merge($extraData, [
                 'profil_anak_id' => $anak->id,
-                'child_name' => $anak->nama_panggilan,
+                'child_name' => $anak->name,
             ]);
             $res = $this->pushToAndroid($anak->fcm_token, $title, $body, $perAnakData);
             if ($res['success']) {
@@ -270,7 +270,7 @@ class FcmPushService
             } else {
                 $summary['android_failed']++;
                 if (!empty($res['error'])) {
-                    $summary['errors'][] = '[android ' . ($anak->nama_panggilan ?? 'anak#' . $anak->id) . '] ' . $res['error'];
+                    $summary['errors'][] = '[android ' . ($anak->name ?? 'anak#' . $anak->id) . '] ' . $res['error'];
                 }
             }
         }
