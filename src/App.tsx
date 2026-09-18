@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { X } from 'lucide-react';
 import { ThemeProvider } from './components/ThemeContext';
-import { ToastProvider } from './components/ToastContext';
+import { ToastProvider, useToast } from './components/ToastContext';
 import { LandingPage } from './components/LandingPage';
 import { LoginPage } from './components/LoginPage';
 import { RegisterPage } from './components/RegisterPage';
@@ -10,6 +11,12 @@ import { PrivacyPolicyPage } from './components/PrivacyPolicyPage';
 import { TermsPage } from './components/TermsPage';
 import { Page, User, PengaturanSubTab } from './types';
 import { getSessionUser, setSessionUser, SessionUser, api } from './lib/apiClient';
+import {
+  requestNotificationPermission,
+  requestPermissionAndRegisterToken,
+  subscribeForegroundPushNotifications,
+  type FcmPushPayload,
+} from './services/fcmWebPush';
 import {
   parseHashRoute,
   syncHashToUrl,
@@ -47,6 +54,207 @@ const DASHBOARD_CHILD_PAGES: Page[] = [
   'inbox', 'pengumuman', 'profil_saya', 'pengaturan',
   'master_paket', 'master_pengguna', 'master_pendapatan', 'master_sistem',
 ];
+
+// --------------------------------------------------------------------------
+// Component: FcmWebIntegrationHooks
+// Fungsi: Mount hooks FCM Web Push DI DALAM ToastProvider (agar useToast tersedia)
+// Posisi: Diletakkan DI BAWAH <ToastProvider> children di return App()
+// Isi: Register Service Worker, Check Notification permission, Auto refresh token
+//      jika granted, Banner kecil enable notif jika default, onMessage foreground toast
+// --------------------------------------------------------------------------
+function FcmWebIntegrationHooks() {
+  const { toast } = useToast();
+  const [showPermissionBanner, setShowPermissionBanner] = useState(false);
+  const swRegistrationRef = useRef<ServiceWorkerRegistration | null>(null);
+
+  // --- [Effect 1/2] Register Service Worker + Setup Foreground Push Listener ---
+  useEffect(() => {
+    let unsubForeground: (() => void) | null = null;
+    let cancelled = false;
+
+    const asyncInit = async () => {
+      if (typeof window === 'undefined') return;
+      const hasSW = 'serviceWorker' in navigator;
+      const hasNotif = typeof (window as any).Notification !== 'undefined';
+
+      // Step 1: Register Service Worker public/firebase-messaging-sw.js scope /
+      if (hasSW) {
+        try {
+          const reg = await navigator.serviceWorker.register('/firebase-messaging-sw.js', {
+            scope: '/',
+            updateViaCache: 'none',
+          });
+          swRegistrationRef.current = reg;
+          console.log('[FCM App] Service Worker BERHASIL didaftarkan, scope =', reg.scope);
+          if (reg.installing) console.log('[FCM App] SW state: installing');
+          if (reg.waiting) console.log('[FCM App] SW state: waiting');
+          if (reg.active) console.log('[FCM App] SW state: active & running');
+        } catch (e: any) {
+          console.warn('[FCM App] GAGAL register Service Worker:', e?.message || e);
+        }
+      } else {
+        console.warn('[FCM App] Browser tidak mendukung Service Worker → Push background tidak aktif');
+      }
+
+      // Step 2: Subscribe onMessage Foreground Push (jika halaman aktif/focus)
+      try {
+        unsubForeground = subscribeForegroundPushNotifications((payload: FcmPushPayload) => {
+          const notif = payload.notification ?? {};
+          const title = (notif.title || 'Notifikasi Litensi Kids').trim();
+          const body = (notif.body || 'Ada pesan baru untuk Anda.').trim();
+          console.log('[FCM App] Foreground push → tampilkan Toast:', { title, body });
+          toast.info(body, 7000, title);
+        });
+      } catch (e: any) {
+        console.warn('[FCM App] Gagal subscribe foreground push listener:', e);
+      }
+
+      // Step 3: Handle Permission state
+      if (!hasNotif) {
+        console.warn('[FCM App] Browser tidak mendukung Notification API');
+        return;
+      }
+      const perm = (window as any).Notification.permission as 'granted' | 'denied' | 'default';
+      console.log('[FCM App] Notification permission state =', perm);
+
+      if (cancelled) return;
+
+      if (perm === 'granted') {
+        // Permission sudah diizinkan → AUTO refresh token FCM setiap mount
+        // (FCM token bisa expired tiap 6 bulan, refresh ketika user buka halaman = aman)
+        try {
+          const swReg = swRegistrationRef.current ?? undefined;
+          const result = await requestPermissionAndRegisterToken(swReg);
+          if (result.ok) {
+            console.log('[FCM App] Auto refresh token FCM BERHASIL. Panjang token =', (result.token || '').length);
+          } else {
+            console.warn('[FCM App] Auto refresh token FCM GAGAL:', result.message);
+          }
+        } catch (e: any) {
+          console.warn('[FCM App] Auto refresh token FCM exception:', e);
+        }
+      } else if (perm === 'default') {
+        // User belum pilih allow/deny → tampilkan BANNER INLINE (JANGAN native popup paksa!)
+        setShowPermissionBanner(true);
+      } else if (perm === 'denied') {
+        // User sudah block notifikasi → jangan tampilkan apapun
+        setShowPermissionBanner(false);
+      }
+    };
+
+    asyncInit();
+
+    // Cleanup unmount: unsubscribe listener
+    return () => {
+      cancelled = true;
+      if (unsubForeground) {
+        try { unsubForeground(); } catch (_) { /* ignore */ }
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [toast]);
+
+  // --- Handler klik tombol "Aktifkan Notifikasi" di banner ---
+  const handleClickEnableNotif = async () => {
+    try {
+      const ok = await requestNotificationPermission();
+      if (ok) {
+        setShowPermissionBanner(false);
+        const swReg = swRegistrationRef.current ?? undefined;
+        const result = await requestPermissionAndRegisterToken(swReg);
+        if (result.ok) {
+          toast.success(
+            'Notifikasi push berhasil diaktifkan! Anda akan menerima notifikasi realtime geofence, chat baru, dan info penting lainnya.',
+            6000,
+            'Notifikasi Aktif ✅'
+          );
+        } else {
+          toast.warning(
+            result.message || 'Gagal menyimpan token notifikasi ke server. Coba refresh halaman.',
+            7000,
+            'Perhatian'
+          );
+        }
+      } else {
+        // User klik block / cancel di native popup
+        setShowPermissionBanner(false);
+        toast.warning(
+          'Izin notifikasi ditolak. Anda bisa mengaktifkannya kapan saja di menu Setelan Situs / Site Settings browser Chrome Anda.',
+          9000,
+          'Izin Ditolak'
+        );
+      }
+    } catch (e: any) {
+      toast.error(
+        'Terjadi kesalahan saat meminta izin notifikasi: ' + (e?.message || String(e)),
+        7000,
+        'Gagal Aktifkan'
+      );
+    }
+  };
+
+  // --- Render nothing if banner disabled ---
+  if (!showPermissionBanner) return null;
+
+  // --- Render BANNER KECIL BAWAH KANAN (inline UI, bukan native popup) ---
+  return (
+    <div
+      className="fixed bottom-6 right-6 z-[99998] max-w-sm w-[calc(100%-3rem)] sm:w-[28rem] pointer-events-auto"
+      role="dialog"
+      aria-live="polite"
+      aria-label="Aktifkan notifikasi push Litensi Kids"
+    >
+      <div className="bg-indigo-950/95 dark:bg-indigo-950/95 backdrop-blur-2xl border border-indigo-500/40 rounded-3xl shadow-2xl shadow-indigo-950/70 overflow-hidden">
+        <div className="flex flex-col p-4 sm:p-5 gap-4">
+          {/* Header: Ikon + Title + Close Button */}
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-start gap-3 min-w-0 flex-1">
+              <div className="w-11 h-11 rounded-2xl bg-indigo-500/20 flex items-center justify-center shrink-0 text-indigo-200 border border-indigo-500/30 shadow-inner">
+                🔔
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="text-sm font-bold text-indigo-100 leading-snug tracking-wide mb-1">
+                  Aktifkan Notifikasi Push
+                </h3>
+                <p className="text-xs text-indigo-300/90 leading-relaxed break-words">
+                  Dapatkan pemberitahuan <span className="font-semibold text-indigo-200">realtime</span> ketika anak masuk/keluar zona aman geofence, chat baru dari perangkat anak, dan notifikasi penting lainnya — kapan saja.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowPermissionBanner(false)}
+              className="p-1.5 rounded-xl hover:bg-white/10 text-indigo-300 hover:text-indigo-100 transition-colors shrink-0"
+              aria-label="Tutup banner notifikasi"
+              title="Tutup"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* Footer: Action Buttons */}
+          <div className="flex flex-col sm:flex-row sm:justify-end items-stretch sm:items-center gap-2 pt-1">
+            <button
+              type="button"
+              onClick={() => setShowPermissionBanner(false)}
+              className="px-4 py-2.5 text-xs font-semibold rounded-2xl text-indigo-300 hover:text-indigo-100 hover:bg-white/10 active:bg-white/15 transition-all whitespace-nowrap order-2 sm:order-1"
+            >
+              Nanti Saja
+            </button>
+            <button
+              type="button"
+              onClick={handleClickEnableNotif}
+              className="px-5 py-2.5 text-xs font-bold rounded-2xl bg-indigo-500 hover:bg-indigo-400 active:bg-indigo-600 text-white shadow-lg shadow-indigo-900/50 transition-all whitespace-nowrap order-1 sm:order-2 flex items-center justify-center gap-2"
+            >
+              <span>🔔</span>
+              <span>Aktifkan Notifikasi</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function App() {
   // --- STATE UTAMA ---
@@ -219,6 +427,9 @@ export default function App() {
           {DASHBOARD_CHILD_PAGES.includes(currentPage) && !isLoggedIn && (
             <LoginPage onNavigate={(p) => navigateToPage(p)} onLoginSuccess={handleLoginSuccess} />
           )}
+
+          {/* FCM Web Push Integration: Hooks + Banner permission (render inside ToastProvider scope) */}
+          <FcmWebIntegrationHooks />
         </div>
       </ToastProvider>
     </ThemeProvider>

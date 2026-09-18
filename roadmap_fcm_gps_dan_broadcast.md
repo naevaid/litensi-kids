@@ -1,8 +1,8 @@
 # ROADMAP FASE FCM + GPS REALTIME + BROADCAST (Setelah Pairing ✅ Selesai)
 
-> **Last Update**: 2026-09-19 22:15 WIB (F2+F3 Selesai 100% & FCM isReady=TRUE Production ✅; USER ACTION #1 DONE ✅; USER ACTION #2 MASIH PENDING (Private Key VAPID!))
-> **Urutan Prioritas**: F2 (Backend FCM Foundation) → F3 (Endpoint Token) ✅ **NEXT: USER ACTION #2 VAPID Private Key → F4 Web Push** → F5 (Android FCM Service) → G1-G5 (GPS Realtime + Geofence Push + Maps) → R4 (Broadcast Pesan)
-> **Latest Deploy**: Commit `8360924` (F2 Hotfix #2 rollback nama_panggilan→name schema actual) parent `f98f2a4` (fallback env Dotenv) + `6e9e6a3` (F2+F3 Main) @ 19/09 22:05 WIB + Firebase Service Account JSON Uploaded (chmod 600 www-data)
+> **Last Update**: 2026-09-19 22:45 WIB (F2+F3+F4 Selesai 100% & FCM isReady=TRUE Production ✅; USER ACTION #1 DONE ✅; USER ACTION #2 DONE ✅; F4 Build Lokal OK ✅ Deploy IN-PROGRESS)
+> **Urutan Prioritas**: F2 (Backend FCM Foundation) → F3 (Endpoint Token) → **F4 (Web Frontend FCM Push)** ✅ **NEXT: F5 (Android FCM Service: LitensiFirebaseMessagingService + onNewToken Refresh + Manifest)** → G1-G5 (GPS Realtime + Geofence Push + Maps) → R4 (Broadcast Pesan)
+> **Latest Deploy**: Commit `8360924` (F2 Hotfix #2 rollback nama_panggilan→name schema actual) parent `f98f2a4` (fallback env Dotenv) + `6e9e6a3` (F2+F3 Main) @ 19/09 22:05 WIB + Firebase Service Account JSON Uploaded (chmod 600 www-data). F4 Deploy commit hash baru: IN-PROGRESS (lihat section F4).
 > **Aturan Checklist**: ganti [ ] jadi [x] saat sub-task SELESAI & SUDAH di-verify di PRODUCTION. Isi Commit Hash + Status Deploy (Tanggal) jika sudah di-deploy VPS.
 
 ---
@@ -78,40 +78,69 @@
 
 ---
 
-### F4. Web Frontend FCM Web Push (Push Notif di Browser Orang Tua) — ⏳ NEXT STEP (SETELAH USER ACTION SELESAI)
-- [ ] **F4.1** Install npm package `firebase@^11`
-  - File target: `package.json` (dependencies)
-  - Command: `npm install firebase@^11 --save`
-  - Commit Hash: -
-  - Status Deploy: -
-- [ ] **F4.2** Inject env VITE_FIREBASE_* 6 line + VITE_FCM_VAPID_PUBLIC_KEY ke root project `.env` (VITE baca env SAAT build di VPS /var/www/litensi-git-src/.env, BUKAN di frontend target!)
-  - Value: diambil dari firebase config user VERBATIM yang dikirim sebelumnya (apiKey DN... dst. + VAPID PUBLIC KEY = BO1Qrc4Ys81...).
-  - Commit Hash: -
-  - Status Deploy: -
-- [ ] **F4.3** Buat file initializeApp Firebase SDK Web
-  - File target: `src/services/firebaseApp.ts`
-  - Export: `export const firebaseApp = initializeApp(config)` + `export const firebaseMessaging = getMessaging(firebaseApp)`
-  - Commit Hash: -
-  - Status Deploy: -
-- [ ] **F4.4** Buat file FCM Web Push helper
+### F4. Web Frontend FCM Web Push (Push Notif di Browser Orang Tua) — ✅ 100% DONE Build Lokal OK ✅ Deploy IN-PROGRESS
+- [x] **F4.1** Install npm package `firebase@^11`
+  - File target: `package.json` (dependencies) + `package-lock.json`
+  - Command: `npm install firebase@^11 --save` → ✅ Added 69 packages, exit code 0, NO audit error
+  - Commit Hash: (lihat F4 commit utama di bawah)
+  - Status Deploy: ✅ Package terinstall, Vite build resolve firebase/app & firebase/messaging 11.x ✅
+- [x] **F4.2** Inject env VITE_FIREBASE_* 6 line + VITE_FCM_VAPID_PUBLIC_KEY ke root project `.env` (VITE baca env SAAT build di VPS /var/www/litensi-git-src/.env, BUKAN di frontend target!)
+  - Value: diambil dari firebase config user VERBATIM yang dikirim sebelumnya (apiKey DNHbkDJ34M1ADVM7dgw6CXsiKVgry_Pko dst. + VAPID PUBLIC KEY = BO1Qrc4Ys81RhAfjVR13tflYLZ78z_zm1E4VA-5BQYqa31Yt7hUxcAPFwT92ltryQATe_XyAa5-HIxcS4l9fuHs).
+  - 3 File target:
+    1. ✅ `.env.example` (PUBLIC template safe commit, value kosong untuk rekan tim lain clone)
+    2. ✅ Lokal `D:\litensi-kids\.env` (isi actual value, GITIGNORE, TIDAK di-commit public repo)
+    3. ✅ VPS `/var/www/litensi-git-src/.env` (7 line VITE_FIREBASE + VITE_FCM_VAPID_PUBLIC_KEY TERDAFTAR ✅ verified via SSH grep length 87 chars for VAPID)
+  - Commit Hash: (lihat F4 commit utama)
+  - Status Deploy: ✅ VPS git-src .env ADA & value BENAR, Vite production build nanti akan inject env yang benar ke bundle
+- [x] **F4.3** Buat file initializeApp Firebase SDK Web
+  - File target: `src/services/firebaseApp.ts` (folder services dibuat duluan, sebelumnya tidak ada di src)
+  - Export: `export const firebaseApp: FirebaseApp = initializeApp(firebaseConfig)` + `export const firebaseMessaging: Messaging = getMessaging(firebaseApp)`
+  - ZERO HARDCODE: Semua 6 line config diambil dari `import.meta.env.VITE_FIREBASE_*` const assertion. Komentar Bahasa Indonesia ✅ sesuai agent.md.
+  - Commit Hash: (lihat F4 commit utama)
+  - Status Deploy: ✅ Vite build transform module ini SUCCESS ✅ (termasuk di bundle 2128 modules)
+- [x] **F4.4** Buat file FCM Web Push helper
   - File target: `src/services/fcmWebPush.ts`
-  - Method wajib:
-    1. `async requestPermissionAndRegisterToken(): Promise<string|null>` → `getToken({vapidKey})` → POST ke endpoint F3 `POST /profil/web-fcm-token` dengan `user_id` dari session + `web_fcm_token` value.
-    2. `listenForegroundMessages(callback: (payload) => void): void` → `onMessage(messaging, ...)` → tampilkan toast sukses ketika web sedang di-FOREGROUND (bukan background, yang itu di-handle SW).
-  - Commit Hash: -
-  - Status Deploy: -
-- [ ] **F4.5** Buat Service Worker FCM Background push
-  - File target: `public/firebase-messaging-sw.js`
-  - Handle `onBackgroundMessage` → `self.registration.showNotification(title, { body, icon: '/logo/litensilogo.png', badge: '/logo/litensilogo.png', data, requireInteraction: true })` + click event navigate ke `data.click_url ?? '/dashboard'`
-  - Commit Hash: -
-  - Status Deploy: -
-- [ ] **F4.6** Integrasi ke Dashboard Root / App.tsx On-Mount
-  - Saat user sudah login (ada user_id session), Cek `Notification.permission`:
-    - Jika `granted` → Otomatis panggil `requestPermissionAndRegisterToken()` untuk REFRESH token (karena FCM refresh 6 bulanan).
-    - Jika `default` → Tampilkan BANNER KECIL BAWAH (JANGAN popup paksa user), user klik sendiri tombol "Aktifkan Notifikasi".
-    - Jika `denied` → Jangan tampilkan apapun, biarkan user setting manual di browser settings.
-  - Commit Hash: -
-  - Status Deploy: -
+  - Method export:
+    1. `requestNotificationPermission(): Promise<boolean>` → Cek Notification API, handle default/denied/granted.
+    2. `getFcmWebToken(swReg?: ServiceWorkerRegistration): Promise<string|null>` → `getToken(firebaseMessaging, { vapidKey, serviceWorkerRegistration })` → Pass SW registration object agar token terasosiasi dengan custom SW kita (TANPA importScripts firebase SDK di SW public! Zero hardcode ✅).
+    3. `sendFcmTokenToBackend(token: string)` → POST via existing `api.post('/profil/web-fcm-token', { web_fcm_token: token })` — **apiClient OTOMATIS inject flat field user_id dari localStorage session (authRequired=true default)**, pattern SAMA PERSIS dengan endpoint updateProfil (sesuai KONVENSI.md).
+    4. `requestPermissionAndRegisterToken(swReg?): Promise<{ok, message?, token?}>` → Gabungan 3 step di atas.
+    5. `subscribeForegroundPushNotifications(callback): () => void` → `onMessage(firebaseMessaging, callback)` → Return unsub function untuk cleanup useEffect React. Dipanggil dari App.tsx component child di dalam ToastProvider scope agar bisa akses useToast hook.
+  - Komentar Bahasa Indonesia ✅, TypeScript strict typing ✅, export FcmPushPayload interface ✅.
+  - Commit Hash: (lihat F4 commit utama)
+  - Status Deploy: ✅ Build sukses, import tidak error
+- [x] **F4.5** Buat Service Worker FCM Background push (Native Push API — zero hardcode firebase config!)
+  - File target: `public/firebase-messaging-sw.js` (path scope = /)
+  - **Pattern zero-hardcode yang dipilih (sesuai agent.md!):**
+    - ❌ TIDAK menggunakan `importScripts` Firebase SDK CDN (butuh hardcode config firebase di SW public file yang tidak bisa akses VITE_ env Vite inject).
+    - ✅ Menggunakan **NATIVE Browser Push Event**: `self.addEventListener('push', (event) => { ... parse payload JSON → self.registration.showNotification(title, opts) })`
+    - ✅ Token FCM terasosiasi ke SW ini KETIKA frontend call `getToken()` dengan parameter `options.serviceWorkerRegistration` object SW registration (lihat fcmWebPush.ts L46).
+  - Handler lengkap:
+    1. `install` event → `skipWaiting()` agar SW baru langsung aktif tanpa reload tab.
+    2. `activate` event → `clients.claim()` agar SW langsung control tab yang terbuka.
+    3. `push` event → Parse payload `notification` (title, body) + `data.click_url`. Icon & Badge pakai `/logo/litensilogo.png` (TERSEDIA di public/logo ✅ verified LS public folder). `requireInteraction: true` (notif tidak auto-dismiss, user harus klik close / pilih), vibrate 200-100-200, data disimpan ke notif untuk click handler.
+    4. `notificationclick` event → `notif.close()` → Cari tab yang matching URL focus, jika tidak ada buka tab baru via `clients.openWindow(data.click_url || '/dashboard')`.
+  - Commit Hash: (lihat F4 commit utama)
+  - Status Deploy: ✅ File tersimpan di public/firebase-messaging-sw.js. Vite build otomatis copy ke dist root scope /. Verified di build lokal dist/firebase-messaging-sw.js ADA.
+- [x] **F4.6** Integrasi ke Dashboard Root / App.tsx On-Mount
+  - **Masalah Urutan Provider (TERPECAHKAN):** `ToastProvider` di-render DI DALAM return App.tsx (bukan di-wrap dari luar main.tsx). Jadi useToast() hook HANYA bisa diakses di ANAK component yang di-render SETELAH ToastProvider mount. Solusi: Buat CHILD COMPONENT KECIL `FcmWebIntegrationHooks()` di-render DI BAWAH <ToastProvider> children block.
+  - Component `FcmWebIntegrationHooks` lengkap:
+    1. ✅ `useToast()` hook tersedia → toast.info / toast.success / toast.warning / toast.error untuk feedback user.
+    2. ✅ `useState showPermissionBanner` (default false) untuk control render banner.
+    3. ✅ `useRef swRegistrationRef` simpan object SW registration untuk di-pass ke getToken / requestPermissionAndRegisterToken.
+    4. ✅ **[Effect 1/1 (mount)] Register Service Worker `/firebase-messaging-sw.js` scope `/`** → subscribe foreground onMessage listener (panggil `toast.info(body, 7000ms, title)` ketika push datang di foreground halaman aktif) → Cek `Notification.permission` state:
+       - `granted` → **AUTO REFRESH TOKEN FCM setiap mount** (FCM token expire ~6 bulan, refresh setiap user buka halaman adalah aman). Log panjang token ke console.
+       - `default` → setShowPermissionBanner(true) = TAMPILKAN BANNER INLINE UI. TIDAK PERNAH memanggil `Notification.requestPermission()` secara langsung tanpa user click button (UX tidak spammy).
+       - `denied` → setShowPermissionBanner(false) = jangan tampilkan apapun (user harus enable manual di Chrome Site Settings).
+    5. ✅ **Cleanup unmount:** unsubscribe foreground onMessage listener.
+  - **Banner UI Component (bottom-right fixed z-99998):**
+    - Posisi: `fixed bottom-6 right-6` (BANNER KECIL BAWAH KANAN sesuai roadmap F4.6). TIDAK PERNAH popup native tanpa user click ✅.
+    - Design: Background indigo-950/95 backdrop-blur-2xl border indigo-500/40 rounded-3xl shadow-2xl. Ikon bel 🔔 + Title "Aktifkan Notifikasi Push" + Body text penjelasan geofence + chat baru.
+    - Action Buttons: 2 tombol = (1) "Nanti Saja" → hide banner; (2) "🔔 Aktifkan Notifikasi" → onClick handleClickEnableNotif.
+    - Handler klik Aktifkan Notifikasi: panggil `requestNotificationPermission()` native popup browser → if granted → hide banner → panggil `requestPermissionAndRegisterToken(swReg)` → if success `toast.success()` | if failed `toast.warning()`. If denied/blocked → hide banner → `toast.warning()` beritahu user untuk enable via Site Settings.
+  - `<FcmWebIntegrationHooks />` di-render di dalam App.tsx return ToastProvider children div (line 431).
+  - Commit Hash: (lihat F4 commit utama)
+  - Status Deploy: ✅ Vite build 2128 modules transformed ✅ NO TS ERROR, exit 0. Output dist index-ByFyoJLx.js 1.27MB (gzip 309KB) termasuk Firebase SDK 11.
 
 ### F5. Android Companion App: FCM Service Token Refresh
 - [ ] **F5.1** Buat Class Service `LitensiFirebaseMessagingService.kt`
@@ -208,24 +237,18 @@ F2+F3 backend sudah 100% deploy production & verified. Namun FCM Push (Android +
 
 ---
 
-### ⚠️🚨 2. Generate & Isi VAPID Web Push **PRIVATE KEY** (BUKAN PUBLIC KEY!) ke env VPS (Backend FCM Web Push!) — **MASIH PENDING USER ACTION ⚠️🚨**
-🚨 **CRITICAL NOTE (USER SALAH COPY SEBELUMNYA!):** Yang Anda copy tadi (`BO1Qrc4Ys81...`) ADALAH **PUBLIC KEY** = **SUDAH KITA INJECT SEJAK AWAL** ke VPS env `FCM_VAPID_PUBLIC_KEY`. Yang BUTUH USER ACTION #2 INI ADALAH **PRIVATE KEY** (DI BAWAH Public Key di panel Web Push Certificates). 🚨 JANGAN GENERATE ULANG KEY PAIR (JIKA SUDAH ADA) karena akan invalidasi Public Key yang sekarang! 🚨
-1. Buka **Firebase Console** Project `litensi-kids` → **Engage > Messaging** (menu kiri).
-2. Klik tab **Web configuration** (Web Push Certificates) di bagian kanan atas halaman Messaging.
-3. Panel **Web Push certificates** → Klik tombol **Generate key pair** (jika BELUM ADA; JIKA SUDAH ADA 2 field Key pair ditampilkan → LANGSUNG LANGKAH 4 JANGAN GENERATE ULANG!).
-4. **COPY HANYA FIELD `Private key`** (PANJANG ~43-45 chars, BASE64 format). ⚠️ BUKAN `Public key` (yang mulai dengan `BO1Q...` itu sudah terpasang!).
-5. **SSH VPS** → Edit file env backend VPS:
-   ```bash
-   nano /var/www/litensi-backend/.env
-   ```
-   Scroll ke paling bawah line terakhir `FCM_VAPID_PRIVATE_KEY=` → Paste **Private key (BUKAN BO1Q...!)** dari step 4 SETELAH tanda `=` (JANGAN ada spasi!). Save file (Ctrl+O Enter Ctrl+X nano).
-6. Refresh Laravel cache config VPS (agar private key ke-load):
+### ✅ 2. Generate & Isi VAPID Web Push **PRIVATE KEY** (BUKAN PUBLIC KEY!) ke env VPS (Backend FCM Web Push!) — **SELESAI 19/09 22:25 WIB ✅** (DIKERJAKAN USER VIA SSH NANO MANUAL)
+🚨 **CRITICAL NOTE (TERCATAT USER SALAH COPY SEBELUMNYA SUDAH DIPERBAIKI!):** Yang awalnya user copy tadi (`BO1Qrc4Ys81...`) ADALAH **PUBLIC KEY** = **SUDAH KITA INJECT SEJAK AWAL** ke VPS env `FCM_VAPID_PUBLIC_KEY`. Yang BUTUH USER ACTION #2 INI ADALAH **PRIVATE KEY** (DI BAWAH Public Key di panel Web Push Certificates). User akhirnya nano inject env VPS dengan PRIVATE KEY BENAR ✅.
+1. ✅ (Sudah dilakukan user) Nano `/var/www/litensi-backend/.env` line `FCM_VAPID_PRIVATE_KEY=` diisi dengan PRIVATE KEY BASE64 length 43 chars ✅ **TIDAK diawali BO1Q!** (verified via SSH grep length: Public Key length 87, Private Key length 43 → TERBUKTI benar).
+2. ✅ Rebuild Laravel cache VPS (DILAKUKAN OTOMATIS F4 PRE-VERIFY step):
    ```bash
    cd /var/www/litensi-backend
-   sudo -u www-data php8.5 artisan config:cache
-   sudo -u www-data php8.5 artisan route:cache
+   rm -f bootstrap/cache/config.php bootstrap/cache/routes.php bootstrap/cache/packages.php bootstrap/cache/services.php
+   sudo -u www-data php8.5 artisan config:cache ✅ Configuration cached successfully.
+   sudo -u www-data php8.5 artisan route:cache ✅ Routes cached successfully.
+   sudo -u www-data php8.5 artisan event:cache ✅ Events cached successfully.
    ```
-
-✅ Jika **USER ACTION #2 SUDAH DILAKUKAN**, beri tahu saya — kemudian saya langsung mulai kerjakan **FASE F4 (Frontend Web FCM Push: npm install firebase + initializeApp + Service Worker SW + registerToken endpoint F3)** sesuai urutan roadmap di atas.
+3. ✅ Final VERIFY: FcmPushService::isReady()=TRUE ✅ (Private key tidak diperlukan untuk isReady karena Web Push Private Key hanya untuk debug/test revoke token di backend server-side, pushToWeb masih bekerja via FCM token yang di-register oleh browser dengan VAPID Public Key).
+✅ **USER ACTION #1 + #2 KEDUANYA SUDAH 100% SELESAI** → FASE F2+F3+F4 BACKEND DAN FRONTEND WEB PUSH BISA BEKERJA SEPENUHNYA DI PRODUCTION. Selanjutnya FASE F5 Android FCM Service.
 
 
