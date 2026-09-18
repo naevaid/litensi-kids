@@ -1,27 +1,44 @@
 // ==========================================================================
 // src/lib/apiClient.ts — Utility helper untuk hit endpoint Laravel
-// - baseURL configurable via VITE_API_BASE_URL (default: http://127.0.0.1:8000)
-// - semua request & response ada console.debug / console.log untuk debugging
-// - auto-append user_id dari localStorage (simulasi auth sebelum Sanctum)
+// --------------------------------------------------------------------------
+// 🔥 PERBAIKAN BUG PRODUCTION 2026-09-18:
+//    SEBELUMNYA: VITE_API_BASE_URL undefined di VPS → fallback hardcode
+//                http://127.0.0.1:8000 di production (gagal konek DB / API)
+//    SESUDAHNYA: Otomatis detect via Vite import.meta.env.PROD (no hardcode!)
+//                PRODUCTION → BASE URL = "" (relative same-origin via Nginx)
+//                DEV MODE   → BASE URL = http://127.0.0.1:8000 (Laravel local)
+//                Bisa di-OVERRIDE kapan saja via env VITE_API_BASE_URL
 // ==========================================================================
 
-export const API_BASE_URL: string =
-  (import.meta as any).env?.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000';
+const VITE_ENV = (import.meta as any).env ?? {};
+const IS_PROD_MODE: boolean = Boolean(
+  VITE_ENV.PROD === true
+  || VITE_ENV.MODE === 'production'
+  || (typeof process !== 'undefined' && process.env?.NODE_ENV === 'production')
+);
+const DEFAULT_DEV_BASE: string = 'http://127.0.0.1:8000';
+const DEFAULT_PROD_BASE: string = ''; // = relative same domain origin (parental.naeva.id)
+const ENV_OVERRIDE: string | undefined = (typeof VITE_ENV.VITE_API_BASE_URL === 'string' && VITE_ENV.VITE_API_BASE_URL.trim() !== '')
+  ? VITE_ENV.VITE_API_BASE_URL.trim()
+  : undefined;
+
+export const API_BASE_URL: string = ENV_OVERRIDE ?? (IS_PROD_MODE ? DEFAULT_PROD_BASE : DEFAULT_DEV_BASE);
 
 // ==========================================================================
 // DEBUG LOG: Cetak BASE_URL setiap import module (untuk verifikasi production env)
-// - Jika PRODUCTION (same-domain) → API_BASE_URL harus = STRING KOSONG "" (origin relative)
-// - Jika DEV MODE → fallback ke localhost 127.0.0.1:8000
 // ==========================================================================
+const isProdUrl = (u: string): boolean => (u === '' || u.startsWith('/'));
 console.log(
   '%c[apiClient] init API_BASE_URL =',
   'color:#8b5cf6;font-weight:700',
   JSON.stringify(API_BASE_URL),
-  `(mode: ${API_BASE_URL === '' ? 'PRODUCTION SAME-ORIGIN (relative /api/v1/*)' : 'DEV LOCALHOST http://127.0.0.1:8000'})`,
+  `(mode: ${isProdUrl(API_BASE_URL) ? 'PRODUCTION SAME-ORIGIN (relative /api/v1/*)' : 'DEV LOCALHOST http://127.0.0.1:8000'})`,
   '| PROD flag =',
-  import.meta.env.PROD,
+  IS_PROD_MODE,
   '| DEV flag =',
-  import.meta.env.DEV
+  !IS_PROD_MODE,
+  '| ENV VITE_API_BASE_URL override =',
+  ENV_OVERRIDE ? JSON.stringify(ENV_OVERRIDE) : '(tidak diset / fallback logic)'
 );
 
 const API_PREFIX = '/api/v1';
