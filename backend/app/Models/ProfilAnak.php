@@ -31,6 +31,7 @@ class ProfilAnak extends Model
         'paired_at',
         'last_active',
         'used_today',
+        'av_minutes_daily_override',
         'notes',
     ];
 
@@ -42,6 +43,7 @@ class ProfilAnak extends Model
             'is_online' => 'boolean',
             'paired_at' => 'datetime',
             'last_active' => 'datetime',
+            'av_minutes_daily_override' => 'integer',
         ];
     }
 

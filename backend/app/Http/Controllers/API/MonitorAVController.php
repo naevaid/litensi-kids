@@ -4,8 +4,10 @@ namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\Controller;
 use App\Models\KuotaAvMonitorHarian;
+use App\Models\PaketLangganan;
 use App\Models\ProfilAnak;
 use App\Models\SesiStreamAvMonitor;
+use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -19,6 +21,52 @@ class MonitorAVController extends Controller
         $userId = $request->input('user_id');
         if (empty($userId) || !is_numeric($userId)) return null;
         return (int) $userId;
+    }
+
+    // Helper normalisasi nama paket ke snake_case — copy pattern dari PaketController agar match antara paket_langganan.name (title case) vs users.active_plan (snake_case)
+    private function normalizePlanId(string $raw): string
+    {
+        $norm = trim((string)$raw);
+        $norm = preg_replace('/[^a-zA-Z0-9]+/', '_', $norm);
+        $norm = preg_replace('/_+/', '_', $norm);
+        return strtolower(trim($norm, '_'));
+    }
+
+    // Helper: Ambil detail Paket Langganan milik user berdasarkan users.active_plan
+    // Return null JUJUR jika user tidak ketemu / active_plan tidak match ke paket_langganan mana pun (ZERO HARDCODE, TIDAK ADA default paket)
+    private function getPaketUser(int $userId): ?PaketLangganan
+    {
+        $user = User::find($userId);
+        if (!$user || empty($user->active_plan)) return null;
+        $userPlanNorm = $this->normalizePlanId((string)$user->active_plan);
+        // Cari ke semua paket active, lalu compare normalized name
+        $allPaket = PaketLangganan::where('status', 'active')->get();
+        foreach ($allPaket as $paket) {
+            if ($this->normalizePlanId((string)$paket->name) === $userPlanNorm) {
+                return $paket;
+            }
+        }
+        return null;
+    }
+
+    // Helper PRIORITAS 1: Hitung batas kuota menit AV HARIAN untuk anak tertentu.
+    // PRIORITAS (dari tertinggi ke rendah):
+    //   1. Jika profil_anak.av_minutes_daily_override > 0 → pakai nilai ini (admin override khusus per anak)
+    //   2. Jika paketan user ada → paket.batas_menit_av_harian
+    //   3. Jika tidak ada data paket apapun → default 0 (unlimited TAPI ini JUJUR — karena user memang tidak punya paket terasosiasi)
+    private function getBatasPaketKuotaAnak(int $userId, ProfilAnak $anak): int
+    {
+        // Override per anak: selalu menang paling tinggi
+        if (!empty($anak->av_minutes_daily_override) && (int)$anak->av_minutes_daily_override > 0) {
+            return (int)$anak->av_minutes_daily_override;
+        }
+        // Ambil dari paket user
+        $paket = $this->getPaketUser($userId);
+        if ($paket !== null) {
+            return (int)($paket->batas_menit_av_harian ?? 0);
+        }
+        // JUJUR fallback: tanpa asumsi (ZERO HARDCODE), return 0 (unlimited)
+        return 0;
     }
 
     /**
@@ -53,8 +101,8 @@ class MonitorAVController extends Controller
 
         $result = [];
         foreach ($anakList as $anak) {
-            // Default kuota (ambil dari aturan daily_limit app = 0 unlimited. Nanti bisa disesuaikan kolom av_minutes_daily per profil_anak jika ditambahkan nanti)
-            $defaultPaketKuota = 0; // 0 = unlimited
+            // PRIORITAS 1: Ambil batas menit KUOTA HARIAN SESUAI PAKET LANGGANAN user + override per anak (bukan hardcode 0 unlimited!)
+            $defaultPaketKuota = $this->getBatasPaketKuotaAnak($userId, $anak);
 
             // Upsert otomatis jika row kuota hari ini untuk anak ini belum ada
             $kuota = KuotaAvMonitorHarian::firstOrCreate(
@@ -68,6 +116,19 @@ class MonitorAVController extends Controller
                     'last_mode' => 'idle',
                 ]
             );
+
+            // JIKA paket user berubah (contoh: user upgrade Free → Premium) TAPI row kuota HARI INI sudah dibuat dengan nilai lama,
+            // kita sync otomatis ke batas terbaru agar tidak stuck lama. PERHATIAN: tidak boleh mengurangi total_digunakan_menit (akuntansi).
+            if ((int)$kuota->paket_kuota_menit_harian !== (int)$defaultPaketKuota && (int)$kuota->total_digunakan_menit === 0) {
+                // Baru di update jika belum pernah dipakai sama sekali (total digunakan 0, aman)
+                $kuota->paket_kuota_menit_harian = $defaultPaketKuota;
+                $kuota->sisa_kuota_menit = ($defaultPaketKuota > 0 ? $defaultPaketKuota : -1);
+                $kuota->save();
+            } elseif ((int)$kuota->paket_kuota_menit_harian < (int)$kuota->total_digunakan_menit) {
+                // Protection: Paket DITURUNKAN (misal dari 240→60) tapi sudah pakai 100 → tetap sisa 0 (tidak minus). Compute ulang.
+                $kuota->sisa_kuota_menit = 0;
+                $kuota->save();
+            }
 
             // Hitung sisa realtime tiap request (jika paket unlimited = -1 else paket - total = max 0)
             $sisaReal = $kuota->paket_kuota_menit_harian === 0
@@ -159,6 +220,57 @@ class MonitorAVController extends Controller
 
         $tanggalToday = Carbon::now()->toDateString();
 
+        // ========= PRIORITAS 1: PRE-VALIDASI PAKET SEBELUM INSERT SESION (STOP USER BYPASS UI DI CLIENT) =========
+        // STEP A: Cek paket user memiliki fitur untuk mode yang diminta
+        $paket = $this->getPaketUser($userId);
+        $mode = $valid['mode'];
+        if ($paket !== null) {
+            // Premium: one_way_audio=true, live_camera=false → jika user request camera_live → 403 upgrade ke Family Pro
+            if ($mode === 'audio_listen' && !(bool)$paket->one_way_audio) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Paket langganan Anda TIDAK mendukung fitur Audio Listen (One-Way Audio). Silakan upgrade paket Premium atau Family Pro.',
+                    'error_code' => 'PAKET_TIDAK_SUPPORT_AUDIO',
+                    'paket_aktif' => $paket->name,
+                ], 403);
+            }
+            if ($mode === 'camera_live' && !(bool)$paket->live_camera) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Paket langganan Anda TIDAK mendukung fitur Live Camera. Silakan upgrade ke Family Pro.',
+                    'error_code' => 'PAKET_TIDAK_SUPPORT_CAMERA',
+                    'paket_aktif' => $paket->name,
+                ], 403);
+            }
+        }
+        // Jika paket user tidak ada (paket = null) atau batas_menit_av_harian = 0 tapi feature diizinkan? Cek sisa kuota dibawah.
+
+        // STEP B: Cek kuota HARI INI untuk anak ini. Jika SISA KUOTA === 0 (habis total dipakai) → BLOCK total.
+        $paketKuotaTerpakai = $this->getBatasPaketKuotaAnak($userId, $anak);
+        // Ambil row kuota hari ini (tanpa create dulu untuk cek)
+        $kuotaForQuotaCheck = KuotaAvMonitorHarian::where('profil_anak_id', $anak->id)
+            ->where('tanggal', $tanggalToday)
+            ->first();
+        $totalDigunakanSaatIni = (int)($kuotaForQuotaCheck?->total_digunakan_menit ?? 0);
+        $sisaKuotaSaatIni = $paketKuotaTerpakai === 0
+            ? -1 // unlimited
+            : max(0, $paketKuotaTerpakai - $totalDigunakanSaatIni);
+
+        // Blok HANYA jika memang BUKAN unlimited ($paketKuotaTerpakai > 0) DAN sisa = 0
+        // Jika $paketKuotaTerpakai = 0 (unlimited / belum diatur) → TIDAK diblokir disini (sudah dicek paket feature flag di STEP A)
+        if ($paketKuotaTerpakai > 0 && $sisaKuotaSaatIni === 0) {
+            return response()->json([
+                'success' => false,
+                'message' => "Kuota Audio & Video hari ini HABIS! Anda sudah memakai {$totalDigunakanSaatIni} menit dari batas paket {$paketKuotaTerpakai} menit/hari. Silakan gunakan Tambah Kuota Manual, Upgrade paket, atau tunggu besok kuota reset otomatis.",
+                'error_code' => 'KUOTA_AV_HARIAN_HABIS',
+                'paket_kuota_menit_harian' => $paketKuotaTerpakai,
+                'total_digunakan_menit' => $totalDigunakanSaatIni,
+                'sisa_kuota_menit' => 0,
+                'mode' => $mode,
+            ], 403);
+        }
+        // ========= END OF PRE-VALIDASI PAKET + KUOTA HABIS =========
+
         DB::beginTransaction();
         try {
             // STEP 1: Auto force-disconnect SEMUA sesi aktif user+anak ini sebelum start sesi baru (antisipasi lupa stop / refresh page)
@@ -184,11 +296,11 @@ class MonitorAVController extends Controller
             $kuota = KuotaAvMonitorHarian::firstOrCreate(
                 ['profil_anak_id' => $anak->id, 'tanggal' => $tanggalToday],
                 [
-                    'paket_kuota_menit_harian' => 0,
+                    'paket_kuota_menit_harian' => $paketKuotaTerpakai, // sesuai paket user + override per anak (bukan hardcode 0!)
                     'digunakan_audio_menit' => 0,
                     'digunakan_video_menit' => 0,
                     'total_digunakan_menit' => 0,
-                    'sisa_kuota_menit' => -1,
+                    'sisa_kuota_menit' => ($paketKuotaTerpakai > 0 ? $paketKuotaTerpakai : -1),
                 ]
             );
             $kuota->last_mode = $valid['mode'];
@@ -306,16 +418,28 @@ class MonitorAVController extends Controller
         $sesi->durasi_menit_aktual = $durasiMenit;
         $sesi->save();
 
+        // Untuk kebutuhan ambil batas paket default: kita butuh user_id & object anak.
+        // Bisa dari relasi $sesi->profilAnak, dan user_id = profilAnak.user_id
+        $anakForFinalize = $sesi->profilAnak;
+        if (!$anakForFinalize) {
+            $anakForFinalize = ProfilAnak::find((int)$sesi->profil_anak_id);
+        }
+        $userIdFinalize = $anakForFinalize?->user_id ?? (int)$sesi->user_id_yg_memantau;
+        $defaultBatas = 0;
+        if ($anakForFinalize && $userIdFinalize > 0) {
+            $defaultBatas = $this->getBatasPaketKuotaAnak($userIdFinalize, $anakForFinalize);
+        }
+
         // Tambahkan durasi ke kuota sesuai mode
         $tanggalSesi = $started->toDateString();
         $kuota = KuotaAvMonitorHarian::firstOrCreate(
             ['profil_anak_id' => $sesi->profil_anak_id, 'tanggal' => $tanggalSesi],
             [
-                'paket_kuota_menit_harian' => 0,
+                'paket_kuota_menit_harian' => $defaultBatas, // BUKAN hardcode 0, ambil dari paket user sesuai helper
                 'digunakan_audio_menit' => 0,
                 'digunakan_video_menit' => 0,
                 'total_digunakan_menit' => 0,
-                'sisa_kuota_menit' => -1,
+                'sisa_kuota_menit' => ($defaultBatas > 0 ? $defaultBatas : -1),
             ]
         );
 
@@ -367,14 +491,15 @@ class MonitorAVController extends Controller
         }
 
         $tanggalToday = Carbon::now()->toDateString();
+        $defaultBatasAv4 = $this->getBatasPaketKuotaAnak($userId, $anak);
         $kuota = KuotaAvMonitorHarian::firstOrCreate(
             ['profil_anak_id' => $anak->id, 'tanggal' => $tanggalToday],
             [
-                'paket_kuota_menit_harian' => 0,
+                'paket_kuota_menit_harian' => $defaultBatasAv4,
                 'digunakan_audio_menit' => 0,
                 'digunakan_video_menit' => 0,
                 'total_digunakan_menit' => 0,
-                'sisa_kuota_menit' => -1,
+                'sisa_kuota_menit' => ($defaultBatasAv4 > 0 ? $defaultBatasAv4 : -1),
             ]
         );
 

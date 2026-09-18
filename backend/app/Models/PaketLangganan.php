@@ -37,10 +37,11 @@ class PaketLangganan extends Model
         'read_message_notifications_label',
         'remote_screen_lock',
         'remote_screen_lock_label',
+        'batas_menit_av_harian',
         'highlight_features',
         'active_users_count',
         'status',
-    ];
+        ];
 
     // Cast tipe data untuk kolom tertentu
     protected function casts(): array
@@ -54,6 +55,7 @@ class PaketLangganan extends Model
             'live_camera' => 'boolean',
             'read_message_notifications' => 'boolean',
             'remote_screen_lock' => 'boolean',
+            'batas_menit_av_harian' => 'integer',
             'highlight_features' => 'array',
             'active_users_count' => 'integer',
         ];
