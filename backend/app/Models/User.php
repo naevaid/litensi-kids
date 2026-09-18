@@ -89,4 +89,30 @@ class User extends Authenticatable
     {
         return $this->hasMany(NotifikasiDiteruskan::class);
     }
+
+    // R5: Sebagai ORANG TUA UTAMA — daftar undangan wali yang saya kirim
+    public function undanganWaliYangDikirim(): HasMany
+    {
+        return $this->hasMany(UndanganWaliAkses::class, 'parent_user_id');
+    }
+
+    // R5: Sebagai ORANG TUA UTAMA — daftar pendamping / wali AKTIF yang saya punya
+    public function daftarPendampingSaya(): HasMany
+    {
+        return $this->hasMany(PermissionWaliPerModul::class, 'parent_user_id')
+            ->where('status_aktif', 'aktif');
+    }
+
+    // R5: Sebagai PENDAMPING — undangan yang diterima / ditujukan ke saya
+    public function undanganWaliDiterima(): HasMany
+    {
+        return $this->hasMany(UndanganWaliAkses::class, 'pendamping_user_id');
+    }
+
+    // R5: Sebagai PENDAMPING — daftar keluarga yang sedang saya dampingi (status AKTIF)
+    public function sayaJadiWaliUntukKeluarga(): HasMany
+    {
+        return $this->hasMany(PermissionWaliPerModul::class, 'pendamping_user_id')
+            ->where('status_aktif', 'aktif');
+    }
 }

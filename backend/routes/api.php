@@ -5,6 +5,7 @@ use App\Http\Controllers\API\AuthController;
 use App\Http\Controllers\API\ChatInboxController;
 use App\Http\Controllers\API\DashboardController;
 use App\Http\Controllers\API\GeofenceController;
+use App\Http\Controllers\API\HakAksesWaliController;
 use App\Http\Controllers\API\KontrolAplikasiController;
 use App\Http\Controllers\API\MasterPendapatanController;
 use App\Http\Controllers\API\MasterSistemController;
@@ -107,6 +108,25 @@ Route::prefix('v1')->group(function () {
         Route::get('/{anakId}/messages', [ChatInboxController::class, 'getMessages'])->whereNumber('anakId');
         Route::post('/{anakId}/send', [ChatInboxController::class, 'sendMessage'])->whereNumber('anakId');
         Route::post('/{anakId}/grant-waktu-layar', [ChatInboxController::class, 'grantWaktuLayar'])->whereNumber('anakId');
+    });
+
+    // === R5 Modul Hak Akses & Wali (Pendamping Co-Parent) — W1 W2 W3 W4 W5
+    // Urutan: SPESIFIK DULU (roles / undang-kirim / undangan-terima / daftar-pendamping)
+    // BARU TERAKHIR wildcard pendamping/{id} dengan REGEX whereNumber
+    Route::prefix('hak-akses')->group(function () {
+        // W1 — Daftar 3 template role + COUNT total_users_aktif real dari DB
+        Route::get('/roles', [HakAksesWaliController::class, 'getRoles']);
+        // W2 — Kirim undangan pendamping (POST BUKAN GET!)
+        Route::post('/undang-kirim', [HakAksesWaliController::class, 'kirimUndangan']);
+        // W3 — Terima undangan via kode_invite (public-ish endpoint)
+        Route::post('/undangan-terima', [HakAksesWaliController::class, 'terimaUndangan']);
+        // W5 — List daftar pendamping AKTIF milik user (sebelum wildcard W4!)
+        Route::get('/daftar-pendamping', [HakAksesWaliController::class, 'getDaftarPendamping']);
+        // W4 — EDIT / Nonaktifkan pendamping (WILDCARD TERAKHIR dengan whereNumber regex!)
+        Route::put('/pendamping/{pendampingRelasiId}', [HakAksesWaliController::class, 'updatePendamping'])
+            ->whereNumber('pendampingRelasiId');
+        Route::patch('/pendamping/{pendampingRelasiId}', [HakAksesWaliController::class, 'updatePendamping'])
+            ->whereNumber('pendampingRelasiId');
     });
 
     // === Modul Kelola Anak (ProfilAnak) ===
