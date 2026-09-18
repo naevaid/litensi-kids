@@ -1,8 +1,8 @@
 # ROADMAP FASE FCM + GPS REALTIME + BROADCAST (Setelah Pairing ✅ Selesai)
 
-> **Last Update**: 2026-09-19 (F2+F3 Selesai 100% Deploy Production)
-> **Urutan Prioritas**: F2 (Backend FCM Foundation) → F3 (Endpoint Token) ✅ **NEXT: F4 Web Push** → F5 (Android FCM Service) → G1-G5 (GPS Realtime + Geofence Push + Maps) → R4 (Broadcast Pesan)
-> **Latest Deploy**: Commit `f98f2a4` (F2 Hotfix) + `6e9e6a3` (F2+F3 Main) @ 19/09/2026 21:36 WIB → VPS `https://parental.naeva.id` ✅ HEALTH HTTPS 200 OK.
+> **Last Update**: 2026-09-19 22:15 WIB (F2+F3 Selesai 100% & FCM isReady=TRUE Production ✅; USER ACTION #1 DONE ✅; USER ACTION #2 MASIH PENDING (Private Key VAPID!))
+> **Urutan Prioritas**: F2 (Backend FCM Foundation) → F3 (Endpoint Token) ✅ **NEXT: USER ACTION #2 VAPID Private Key → F4 Web Push** → F5 (Android FCM Service) → G1-G5 (GPS Realtime + Geofence Push + Maps) → R4 (Broadcast Pesan)
+> **Latest Deploy**: Commit `8360924` (F2 Hotfix #2 rollback nama_panggilan→name schema actual) parent `f98f2a4` (fallback env Dotenv) + `6e9e6a3` (F2+F3 Main) @ 19/09 22:05 WIB + Firebase Service Account JSON Uploaded (chmod 600 www-data)
 > **Aturan Checklist**: ganti [ ] jadi [x] saat sub-task SELESAI & SUDAH di-verify di PRODUCTION. Isi Commit Hash + Status Deploy (Tanggal) jika sudah di-deploy VPS.
 
 ---
@@ -29,10 +29,13 @@
     2. `pushToWeb(string $webFcmToken, string $title, string $body, array $data = []): array`
     3. `broadcastUserChildren(int $userId, string $eventType, array $payload): array` (loop semua anak milik userId + user row sendiri web token)
   - ✅ Hotfix f98f2a4: Production config:cache menonaktifkan env() global → FALLBACK DIRECT LOAD .env via `\Dotenv\Dotenv::createImmutable(base_path())->safeLoad()` di constructor (tanpa overwrite global $_ENV).
-  - ✅ Hotfix f98f2a4: Fix bug `select(['id', 'name', ...])` → field schema ProfilAnak adalah `nama_panggilan` BUKAN `name`, ganti select jadi `['id', 'nama_panggilan', 'fcm_token']`.
+  - ⚠️ Hotfix f98f2a4 (SALAH ASUMSI!): awalnya saya pikir field nama ProfilAnak adalah `nama_panggilan`, padahal REAL schema (Model ProfilAnak L19 + Migration L15 + seluruh modul backend) SEMUA PAKAI `name`. ⚠️
+  - ✅ Hotfix 8360924: **Rollback final actual schema**: select `['id', 'name', 'fcm_token']` + property akses `$anak->name` (bukan nama_panggilan). Verified production DB SHOW COLUMNS: field `name varchar(255) NOT NULL` ✅.
   - ✅ Degrade graceful: Jika file JSON Service Account TIDAK ADA → `isReady()=false`, semua 3 method push return `['skipped'=>true]` TANPA crash/thow exception HTTP 500.
-  - Commit Hash: `6e9e6a3` (init class) + `f98f2a4` (fallback env + fix field name)
-  - Status Deploy: **Deployed 19/09/2026 21:36 WIB** (verify via PHP script VPS: instantiate FcmPushService isReady=false TANPA crash, 3 method push skipped=true ✅, method ProfilAnak query execute tanpa Column Not Found ✅)
+  - ✅ User Action #1 DONE (19/09 22:00 WIB): Firebase Service Account JSON diupload lokal & VPS `/var/www/litensi-backend/storage/app/firebase-service-account.json`, chown www-data chmod 600.
+  - ✅ VERIFY FINAL production VPS (post 8360924 + User Action #1): `FcmPushService::isReady()=TRUE` ✅; `pushToAndroid(dummy-token)` → Firebase response "not valid token" = BUKTI API CALL GOOGLE FCM HTTP v1 BERHASIL REAL ✅; `broadcastUserChildren(user_id=1)` → TANPA SQL Exception Column Not Found, `fcm_ready=true`, `skipped_ready_false=0`, `total_targets=0` ✅ (expected 0 karena token Android + Web FCM belum di-register F4+F5).
+  - Commit Hash: `6e9e6a3` (init class) + `f98f2a4` (fallback Dotenv env) + `8360924` (rollback nama_panggilan→name column actual schema)
+  - Status Deploy: **Deployed 19/09/2026 22:05 WIB** FCM ENGINE 100% PRODUCTION READY ✅✅✅
 
 ### F3. Endpoint API FCM Token (Registrasi Token) — ✅ 100% DONE + DEPLOY PRODUCTION
 - [x] **F3.1** Migration tambah kolom web FCM token ke tabel `users`
@@ -187,10 +190,10 @@
 ## ⚠️ USER ACTION YANG DIBUTUHKAN SEBELUM LANJUT KE F4 (Web FCM Push)
 F2+F3 backend sudah 100% deploy production & verified. Namun FCM Push (Android + Web) BELUM BISA bekerja SEBELUM user menyelesaikan 2 langkah MANUAL di Firebase Console. Silakan kerjakan untuk melanjutkan ke F4+F5:
 
-### 1. Generate & Upload Firebase Service Account JSON (Backend F2 butuh file ini!)
+### ✅ 1. Generate & Upload Firebase Service Account JSON (Backend F2 butuh file ini!) — **SELESAI 19/09 22:00 WIB ✅** (DIKERJAKAN OTOMATIS OLEH ASSISTANT)
 1. Buka **Firebase Console** → Pilih Project `litensi-kids`.
 2. Go to **Project Settings** (⚙️ gear kiri atas) → Tab **Service Accounts**.
-3. Di bawah panel **Admin SDK configuration service accounts**, Pilih bahasa **PHP Admin SDK** (Radio button).
+3. Di bawah panel **Admin SDK configuration service accounts**, PILIH BAHASA APAPUN (Node.js direkomendasikan, Java/Python/Go SAMA SAJA — karena FILE JSON YANG DI-DOWNLOAD SELALU SAMA FORMAT untuk SEMUA bahasa).
 4. Klik tombol **GENERATE NEW PRIVATE KEY** → Confirm "Generate key". File JSON OTOMATIS di-download ke PC user.
 5. **Rename** file JSON download tersebut menjadi nama file EXACT: `firebase-service-account.json`
 6. **Upload via SCP/SFTP (FileZilla / WinSCP)** ke 2 lokasi berikut:
@@ -201,17 +204,21 @@ F2+F3 backend sudah 100% deploy production & verified. Namun FCM Push (Android +
    sudo chown www-data:www-data /var/www/litensi-backend/storage/app/firebase-service-account.json
    sudo chmod 600 /var/www/litensi-backend/storage/app/firebase-service-account.json
    ```
+✅ **STATUS SELESAI:** File `litensi-kids-firebase-adminsdk-fbsvc-72551d34d2.json` di-download user → di-rename, di-copy ke lokal `D:\litensi-kids\backend\storage\app\firebase-service-account.json` → di-upload via base64 ke VPS path yang benar, chown/chmod set ✅. Verify final: FcmPushService::isReady()=TRUE & Firebase HTTP v1 API CALL BERHASIL GOOGLE SERVERS response actual "not valid token" (expected karena token dummy).
 
-### 2. Generate & Isi VAPID Web Push Private Key ke env VPS (Backend FCM Web Push!)
+---
+
+### ⚠️🚨 2. Generate & Isi VAPID Web Push **PRIVATE KEY** (BUKAN PUBLIC KEY!) ke env VPS (Backend FCM Web Push!) — **MASIH PENDING USER ACTION ⚠️🚨**
+🚨 **CRITICAL NOTE (USER SALAH COPY SEBELUMNYA!):** Yang Anda copy tadi (`BO1Qrc4Ys81...`) ADALAH **PUBLIC KEY** = **SUDAH KITA INJECT SEJAK AWAL** ke VPS env `FCM_VAPID_PUBLIC_KEY`. Yang BUTUH USER ACTION #2 INI ADALAH **PRIVATE KEY** (DI BAWAH Public Key di panel Web Push Certificates). 🚨 JANGAN GENERATE ULANG KEY PAIR (JIKA SUDAH ADA) karena akan invalidasi Public Key yang sekarang! 🚨
 1. Buka **Firebase Console** Project `litensi-kids` → **Engage > Messaging** (menu kiri).
 2. Klik tab **Web configuration** (Web Push Certificates) di bagian kanan atas halaman Messaging.
-3. Panel **Web Push certificates** → Klik tombol **Generate key pair** (jika belum ada; jika sudah ada, lanjut langkah 4 JANGAN generate ulang! Karena akan invalidasi PUBLIC KEY yang sudah inject ke aplikasi user sebelumnya).
-4. **COPY** field **Private key** (PANJANG ~45 chars, BUKAN Public Key yang sudah ada BO1Qrc4Ys!).
+3. Panel **Web Push certificates** → Klik tombol **Generate key pair** (jika BELUM ADA; JIKA SUDAH ADA 2 field Key pair ditampilkan → LANGSUNG LANGKAH 4 JANGAN GENERATE ULANG!).
+4. **COPY HANYA FIELD `Private key`** (PANJANG ~43-45 chars, BASE64 format). ⚠️ BUKAN `Public key` (yang mulai dengan `BO1Q...` itu sudah terpasang!).
 5. **SSH VPS** → Edit file env backend VPS:
    ```bash
    nano /var/www/litensi-backend/.env
    ```
-   Scroll ke paling bawah line terakhir `FCM_VAPID_PRIVATE_KEY=` → Paste Private key dari step 4 SETELAH tanda = (JANGAN ada spasi!). Save file (Ctrl+O Enter Ctrl+X nano).
+   Scroll ke paling bawah line terakhir `FCM_VAPID_PRIVATE_KEY=` → Paste **Private key (BUKAN BO1Q...!)** dari step 4 SETELAH tanda `=` (JANGAN ada spasi!). Save file (Ctrl+O Enter Ctrl+X nano).
 6. Refresh Laravel cache config VPS (agar private key ke-load):
    ```bash
    cd /var/www/litensi-backend
@@ -219,4 +226,6 @@ F2+F3 backend sudah 100% deploy production & verified. Namun FCM Push (Android +
    sudo -u www-data php8.5 artisan route:cache
    ```
 
-✅ Jika kedua USER ACTION di atas SUDAH DILAKUKAN, beri tahu saya — kemudian saya mulai kerjakan **FASE F4 (Frontend Web FCM Push: npm install firebase + initializeApp + Service Worker SW + registerToken endpoint F3)** sesuai urutan roadmap di atas.
+✅ Jika **USER ACTION #2 SUDAH DILAKUKAN**, beri tahu saya — kemudian saya langsung mulai kerjakan **FASE F4 (Frontend Web FCM Push: npm install firebase + initializeApp + Service Worker SW + registerToken endpoint F3)** sesuai urutan roadmap di atas.
+
+
