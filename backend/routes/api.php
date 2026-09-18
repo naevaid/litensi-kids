@@ -122,11 +122,11 @@ Route::prefix('v1')->group(function () {
         Route::post('/undangan-terima', [HakAksesWaliController::class, 'terimaUndangan']);
         // W5 — List daftar pendamping AKTIF milik user (sebelum wildcard W4!)
         Route::get('/daftar-pendamping', [HakAksesWaliController::class, 'getDaftarPendamping']);
-        // W4 — EDIT / Nonaktifkan pendamping (WILDCARD TERAKHIR dengan whereNumber regex!)
-        Route::put('/pendamping/{pendampingRelasiId}', [HakAksesWaliController::class, 'updatePendamping'])
-            ->whereNumber('pendampingRelasiId');
-        Route::patch('/pendamping/{pendampingRelasiId}', [HakAksesWaliController::class, 'updatePendamping'])
-            ->whereNumber('pendampingRelasiId');
+        // W4 — EDIT / Nonaktifkan pendamping (WILDCARD TERAKHIR — TANPA whereNumber!
+        //   Defensive is_numeric() SUDAH ADA di controller L402-407 agar return JSON 404
+        //   BUKAN HTML 404 default Laravel (yang muncul jika regex route menolak sebelum ke controller)
+        Route::put('/pendamping/{pendampingRelasiId}', [HakAksesWaliController::class, 'updatePendamping']);
+        Route::patch('/pendamping/{pendampingRelasiId}', [HakAksesWaliController::class, 'updatePendamping']);
     });
 
     // === Modul Kelola Anak (ProfilAnak) ===
