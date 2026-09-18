@@ -143,6 +143,9 @@ class AnakController extends Controller
                     'data' => [
                         'code' => $code,
                         'paired' => $paired,
+                        // (BARU) Sertakan field name agar frontend web bisa prefill
+                        // form Nama Anak di Step 2 tanpa user ketik manual lagi.
+                        'name' => $anakFromDb->name ?? null,
                         'device_info' => $dbDeviceInfo,
                         'paired_at' => $anakFromDb->paired_at?->toISOString(),
                         'expired' => false,
@@ -172,6 +175,11 @@ class AnakController extends Controller
                 'mac_address' => substr(md5($code), 0, 12),
             ];
             $pairing['paired_at'] = now()->toISOString();
+            // (BARU) Simulasi pairing: inject nama default jika ada di cache (untuk prefill form web
+            if (empty($pairing['name'])) {
+                $userId = $pairing['user_id'] ?? null;
+                $pairing['name'] = $userId ? "Anak #{$userId}" : null;
+            }
             Cache::put($cacheKey, $pairing, 600);
         }
 
@@ -180,6 +188,8 @@ class AnakController extends Controller
             'data' => [
                 'code' => $code,
                 'paired' => (bool) $pairing['paired'],
+                // (BARU) Sertakan field name agar frontend web prefill Nama Anak Step 2
+                'name' => $pairing['name'] ?? null,
                 'device_info' => $pairing['device_info'],
                 'paired_at' => $pairing['paired_at'] ?? null,
                 'expired' => false,
@@ -201,6 +211,8 @@ class AnakController extends Controller
             'app_version' => 'nullable|string|max:50',
             'battery' => 'nullable|integer|min:0|max:100',
             'fcm_token' => 'nullable|string|max:255',
+            // (Baru) Nama panggilan anak dari Android PairingScreen — opsional, max 50 karakter.
+            'child_name' => 'nullable|string|max:50',
         ]);
 
         $code = $validated['code'];
@@ -270,8 +282,10 @@ class AnakController extends Controller
                     // (BUG FIX #1 - Scenario C) TIDAK ADA row ProfilAnak sama sekali di DB user ini.
                     //   → Auto-create minimal row dengan nama default "Anak #userId" agar pairing TETAP BERHASIL
                     //     tanpa harus user save data anak dahulu di web.
-                    //     Nanti user tetap bisa edit nama / age / gender di dashboard setelah pairing.
-                    $defaultName = "Anak #{$userId}";
+                    //     (NEW) JIKA Android mengirim field child_name → pakai nama itu (default name auto-create diganti).
+                    $defaultName = filled($validated['child_name'] ?? null)
+                        ? trim($validated['child_name'])
+                        : "Anak #{$userId}";
                     $profilAnak = ProfilAnak::create([
                         'user_id' => $userId,
                         'name' => $defaultName,
@@ -300,7 +314,23 @@ class AnakController extends Controller
             }
 
             // (Scenario A/B/C SEMUA MASUK SINI: row SUDAH ada) → Update kolom device info + timestamp.
-            $profilAnak->update([
+            // ------------------------------------------------------------------
+            // (NEW) RULE NAMA ANAK DARI ANDROID: Hormati input user dari web jika sudah ada:
+            //   1. JIKA Android KIRIM child_name (tidak kosong), DAN
+            //   2. JIKA ProfilAnak.name SAAT INI = KOSONG ATAU masih DEFAULT auto-create (prefix "Anak #")
+            //   → MAKA update name dengan nilai child_name dari Android.
+            //   JIKA name sudah diisi user di web (nilai NON-default & NON-kosong) → JANGAN DI-OVERWRITE!
+            $fieldNameAkanDiupdate = [];
+            if (filled($validated['child_name'] ?? null)) {
+                $namaTrim = trim($validated['child_name']);
+                $namaSekarang = trim($profilAnak->name ?? '');
+                $namaMasihKosong = ($namaSekarang === '') || Str::startsWith($namaSekarang, 'Anak #');
+                if ($namaMasihKosong) {
+                    $fieldNameAkanDiupdate['name'] = $namaTrim;
+                }
+            }
+
+            $profilAnak->update(array_merge([
                 'pairing_pin' => $validated['pin'],
                 'device_name' => $deviceInfo['nama_perangkat'],
                 'device_model' => $deviceInfo['model'],
@@ -310,8 +340,15 @@ class AnakController extends Controller
                 'is_online' => true,
                 'paired_at' => now(),
                 'last_active' => now(),
-            ]);
+            ], $fieldNameAkanDiupdate));
             $profilAnak = $profilAnak->fresh()->load('user');
+
+            // (BARU) Setelah final update, simpan field `name` ke cache pairing:code
+            // agar endpoint pairingStatus (dipoll frontend web setiap 2.5 detik)
+            // bisa return nama anak ke client, sehingga Step 2 form Nama Anak di
+            // modal web otomatis TERISI (user tidak perlu ketik nama lagi).
+            $pairing['name'] = $profilAnak->name;
+            Cache::put($cacheKey, $pairing, 600);
         }
 
         return response()->json([
@@ -321,6 +358,7 @@ class AnakController extends Controller
                 'code' => $code,
                 'paired' => true,
                 'paired_at' => $pairing['paired_at'],
+                'name' => $profilAnak->name ?? null,
                 'device_info' => $deviceInfo,
                 'user_id' => $userId,
                 'profil_anak' => $profilAnak,

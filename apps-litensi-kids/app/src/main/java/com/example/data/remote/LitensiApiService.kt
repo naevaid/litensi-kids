@@ -17,7 +17,7 @@ interface LitensiApiService {
     suspend fun getPairingStatus(@Query("code") code: String): ApiResponse<PairingStatusDto>
 
     // AN3 — Konfirmasi pairing dari perangkat anak (Android) setelah scan QR / input manual
-    // @Field WAJIB sesuai validate() L149 AnakController: code, pin, device_id s/d fcm_token
+    // @Field WAJIB sesuai validate() L149 AnakController: code, pin, device_id s/d fcm_token + child_name (baru)
     @FormUrlEncoded
     @POST("api/v1/anak/pairing/confirm")
     suspend fun confirmPairing(
@@ -29,7 +29,9 @@ interface LitensiApiService {
         @Field("os_version") osVersion: String? = null,
         @Field("app_version") appVersion: String? = null,
         @Field("battery") battery: Int? = null,
-        @Field("fcm_token") fcmToken: String? = null
+        @Field("fcm_token") fcmToken: String? = null,
+        // (Baru) Nama panggilan anak dari user Android — opsional, boleh null
+        @Field("child_name") childName: String? = null
     ): ApiResponse<PairingConfirmResponseDto>
 
     // AN4 — Get detail profil anak by ID (sync data setelah pairing confirm sukses)

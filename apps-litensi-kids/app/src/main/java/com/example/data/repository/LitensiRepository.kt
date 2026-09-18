@@ -15,6 +15,7 @@ import com.example.data.remote.LitensiApiService
 import com.example.data.remote.ProfilAnakDto
 import com.example.data.remote.TelemetryResponseDto
 import com.squareup.moshi.Moshi
+import com.squareup.moshi.Types
 import kotlinx.coroutines.flow.Flow
 import retrofit2.HttpException
 
@@ -32,7 +33,12 @@ class LitensiRepository(
             .addLast(com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory())
             .build()
     }
-    private val apiResponseAdapter = moshiParser.adapter(ApiResponse::class.java)
+    // (Crash Fix) ApiResponse<T> adalah GENERIC type — TIDAK BOLEH pakai ApiResponse::class.java (T erased, Moshi crash No JsonAdapter for T).
+    // Untuk error body parser: kita hanya butuh field {success, message}, concrete type parameter = Any (nullable deserialize null/object/array bebas).
+    // Build ParameterizedType via com.squareup.moshi.Types.newParameterizedType(rawType, typeArg1) sesuai Moshi best practice.
+    private val apiErrorBodyType = Types.newParameterizedType(ApiResponse::class.java, Any::class.java)
+    @Suppress("UNCHECKED_CAST")
+    private val apiResponseAdapter = moshiParser.adapter<ApiResponse<Any>>(apiErrorBodyType)
 
     val pairingState: Flow<PairingStateEntity?> = db.pairingDao().getPairingState()
     val tasks: Flow<List<TaskEntity>> = db.taskDao().getAllTasks()
@@ -134,7 +140,10 @@ class LitensiRepository(
                 osVersion = osVersi,
                 appVersion = appVersi,
                 battery = batteryLevelSekarang,
-                fcmToken = null
+                fcmToken = null,
+                // (Baru) Kirim nama panggilan anak dari input user di PairingScreen ke backend
+                // untuk disimpan ke ProfilAnak.name (rule: tidak overwrite jika name sudah diisi user web)
+                childName = childNameFallback.takeIf { it.isNotBlank() }
             )
         }
 

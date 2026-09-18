@@ -335,6 +335,22 @@ export const KelolaAnakPage: React.FC<KelolaAnakPageProps> = ({ showToast }) => 
           setNewDeviceModel(data.device_info.model || '');
           setNewOSVersion(`${data.device_info.os || ''} / ${data.device_info.versi_app || ''}`.trim().replace(/^ \/ /, ''));
         }
+        // (BARU) Isi prefill field Nama Anak dari response backend data.name
+        // jika field Nama Anak di Step 2 masih KOSONG (hormati input user jika sudah ketik duluan).
+        // Nilai data.name berasal dari sinkronisasi Android pairing screen (Nama Panggilan Anak).
+        if (typeof data.name === 'string') {
+          const namaTrim = data.name.trim();
+          if (namaTrim) {
+            setNewChildName(prev => {
+              if (prev && prev.trim()) {
+                console.debug('[Anak] Prefill nama anak DILEWATI: user sudah mengisi manual =', prev);
+                return prev;
+              }
+              console.debug('[Anak] ✅ Prefill Nama Anak Step 2 dari sinkronisasi Android =', namaTrim);
+              return namaTrim;
+            });
+          }
+        }
         // Auto lanjut ke Step 2: Form Data Anak
         setTimeout(() => setAddStep('form'), 800);
         return;
@@ -372,6 +388,20 @@ export const KelolaAnakPage: React.FC<KelolaAnakPageProps> = ({ showToast }) => 
         setNewDeviceName(dInfo.nama_perangkat || '');
         setNewDeviceModel(dInfo.model || '');
         setNewOSVersion(`${dInfo.os || ''} / ${dInfo.versi_app || ''}`.trim().replace(/^ \/ /, ''));
+        // (BARU) Prefill Nama Anak Step 2 dari simulasi pairing juga (jika ada & field masih kosong).
+        if (typeof res.data.name === 'string') {
+          const namaTrim = res.data.name.trim();
+          if (namaTrim) {
+            setNewChildName(prev => {
+              if (prev && prev.trim()) {
+                console.debug('[Anak] Prefill nama anak DILEWATI (simulasi): user sudah mengisi manual =', prev);
+                return prev;
+              }
+              console.debug('[Anak] ✅ Prefill Nama Anak Step 2 dari SIMULASI pairing =', namaTrim);
+              return namaTrim;
+            });
+          }
+        }
         showToast(`Perangkat ${dInfo.nama_perangkat || 'baru'} berstatus TERHUBUNG!`, 'success');
         setTimeout(() => setAddStep('form'), 900);
       } else {

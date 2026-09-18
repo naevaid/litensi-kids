@@ -48,12 +48,12 @@ android {
   }
   // (Warning Cleanup 1) Fix 61 warning @Json annotation target ambigu Kotlin 2.0+.
   // Opt-in future behavior: annotation di constructor param apply BOTH ke param + property (sesuai expect Moshi codegen).
-  // Alternative: @param:Json di tiap field (61x ubah) → ini opsi 1 line saja.
-  kotlinOptions {
-    freeCompilerArgs += listOf(
-      "-Xannotation-default-target=param-property"
-    )
-    jvmTarget = "11"
+  // Kotlin 2.0+ unified DSL via extension kotlin { compilerOptions { } (bukan kotlinOptions lama).
+  kotlin {
+    compilerOptions {
+      freeCompilerArgs.add("-Xannotation-default-target=param-property")
+      jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11)
+    }
   }
   buildFeatures {
     compose = true

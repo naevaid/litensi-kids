@@ -370,8 +370,9 @@ class LitensiViewModel(application: Application) : AndroidViewModel(application)
     }
 
     // Helper cek AppOps untuk permission usage stats (bukan runtime permission standard)
-    // (Warning Cleanup 3) unsafeCheckOpNoThrow(String,Int,String) 3 param deprecated targetSdk 36.
-    // SDK ≥ S (31) pakai overload 4 parameter (attributionTag=null). SDK 24-30 fallback 3 param legacy.
+    // NOTE: Overload 4-param (attributionTag) TIDAK ADA di public SDK API (hidden/restricted).
+    // Pakai overload 3-param (op, uid, pkg) standard untuk SEMUA SDK ≥ 24.
+    // Deprecated di API 29+ tapi tetap tersedia di compileSdk 36 (backward compat Google never delete).
     @Suppress("DEPRECATION")
     private fun checkUsageStatsPermission(context: Context): Boolean {
         val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager?
@@ -379,20 +380,7 @@ class LitensiViewModel(application: Application) : AndroidViewModel(application)
         val opStr = AppOpsManager.OPSTR_GET_USAGE_STATS
         val uid = android.os.Process.myUid()
         val pkg = context.packageName
-        val mode = when {
-            // SDK 31+ (S) → overload 4 parameter: unsafeCheckOpNoThrow(op, attributionTag, uid, packageName)
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-                appOps.unsafeCheckOpNoThrow(opStr, null, uid, pkg)
-            }
-            // SDK 29-30 (Q/R) → overload 3 parameter (deprecated tapi masih available, masih lebih baik dari checkOp)
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q -> {
-                appOps.unsafeCheckOpNoThrow(opStr, uid, pkg)
-            }
-            // SDK ≤ 28 (P ke bawah) → checkOpNoThrow 3 parameter (deprecated sebelum Q, tapi satu-satunya cara)
-            else -> {
-                appOps.checkOpNoThrow(opStr, uid, pkg)
-            }
-        }
+        val mode = appOps.unsafeCheckOpNoThrow(opStr, uid, pkg)
         return mode == AppOpsManager.MODE_ALLOWED
     }
 
