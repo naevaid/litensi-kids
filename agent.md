@@ -152,13 +152,66 @@ WAJIB 3 checklist sebelum lapor selesai:
 
 ## 12. DEPLOY VPS (CATATAN TETAP)
 - Domain Production: `https://parental.naeva.id`
-- VPS IP: `145.79.11.52`, SSH Port `22022`, user `root`.
+- VPS IP: `145.79.11.52`, **SSH Port yang dipakai:**
+  - ✅ **Port `22` DEFAULT (REKOMENDASI UTAMA):** Jarang kena Fail2ban, koneksi stabil — GUNAKAN PORT INI SELALU.
+  - ⚠️ Port `22022` custom: ADA Fail2ban rate limit >5 koneksi/10 menit → Connection reset / timeout. HANYA pakai jika port 22 tidak bisa.
+  - SSH user: `root`, private key lokal: `$env:USERPROFILE\.ssh\id_ed25519` (Ed25519).
 - Path Backend VPS: `/var/www/litensi-backend`
 - Path Frontend VPS: `/var/www/litensi-frontend`
 - DB Production VPS: `127.0.0.1:3306` nama `litensi_kids` user `litensi_kids`, password di `.env` line 21-25.
 - PHP-FPM Socket: `/var/run/php/php8.5-fpm.sock`
 - Nginx Config: `/etc/nginx/sites-enabled/parental.naeva.id`
 - Master Login Production Valid: `admin@litensikids.id` / `admin123`
+
+### 12.1 WORKFLOW DEPLOY REKOMENDASI (FULL GITHUB PUBLIC → VPS = 1 COMMAND SAJA!)
+**Dulu = manual tar upload via SCP 4 menit (lambat & kena Fail2ban).**
+**Sekarang = FULL GIT WORKFLOW, cepat & otomatis!** (VPS git v2.43 + node v20.19 + npm 10.8, RAM 6GB available, Disk 31GB free.)
+
+Repo GitHub naevaid/litensi-kids **SUDAH PUBLIC → VPS bisa HTTPS clone TANPA credential access token!**
+
+Folder source git di VPS: **`/var/www/litensi-git-src`** (full repo clone depth 50, executable deploy script ada di sini).
+
+```
+URUTAN DEPLOY NEXT TIME (SETIAP KALI ADA PERUBAHAN):
+(1) LOKAL:   git add -A ; git commit -m "pesan perubahan" ; git push origin main
+
+(2) SSH 1x VPS JALANKAN 1 COMMAND INI SAJA:
+       ssh -p 22 -i $env:USERPROFILE\.ssh\id_ed25519 root@145.79.11.52 ^
+         "cd /var/www/litensi-git-src && bash deploy-litensi.sh"
+
+   ATAU jika sudah di terminal VPS:
+       cd /var/www/litensi-git-src && bash deploy-litensi.sh
+```
+
+### 12.2 deploy-litensi.sh OTOMATIS 8 STEP (ROLLBACK SAFETY TRAP AKTIF!)
+Script location: `/var/www/litensi-git-src/deploy-litensi.sh` (chmod +x, bash -n syntax clean ✅).
+Setiap step kalau ERROR → **trap auto-rollback snapshot PRE-deploy** (restore ke state sebelum deploy gagal, production TIDAK MATI).
+```
+Step 1: git fetch + reset --hard origin/main      (force sync GitHub PUBLIC latest, no merge conflict)
+Step 2: Snapshot PRE-deploy rollback              (temp /tmp/rollback-deploy-<timestamp>)
+Step 3: Rsync backend SAFE                        (EXCLUDE: .env, vendor/, storage/, bootstrap cache)
+Step 4: Composer install --no-dev                 (HANYA jika composer.lock berubah, else skip)
+Step 5: npm ci (if package-lock changed) + Vite build production  (≈ 7.5 detik, RAM 6GB 1143KB JS)
+Step 6: Rsync dist/ → frontend production         (cache busting: Vite hash beda tiap build OK)
+Step 7: chown www-data + Laravel cache clear optimize + systemctl reload php8.5-fpm nginx
+Step 8: Health check /api/v1/system/health        (server_status=optimal, database=healthy)
+```
+
+### 12.3 ROLLBACK MANUAL JIKA KEDAPATAN BUG KRITIS SETELAH DEPLOY
+Backup permanen user tanggal 18 Sept 2026 11:18:54 WIB (sebelum deploy bug fixes paket):
+```bash
+# VPS SSH PORT 22
+cp -a /var/www/litensi-backend.bak-20260918-111854/* /var/www/litensi-backend/
+cp -a /var/www/litensi-frontend.bak-20260918-111854/* /var/www/litensi-frontend/
+cd /var/www/litensi-backend && php artisan optimize:clear
+systemctl reload php8.5-fpm && systemctl reload nginx
+```
+
+### 12.4 CATATAN HASH FILE JS TIAP BUILD BEDA = EXPECTED (BUKAN BUG)
+- Build lokal Windows: `dist/assets/index-iRho9IIm.js`
+- Build VPS Ubuntu:  `dist/assets/index-DU6VQ9yK.js` (nama beda karena env path beda → Vite rollup hash beda)
+- ✅ CONTENT SAMA PERSIS → SHA256 CSS `index-Baj-JXgL.css` 175KB identik byte-for-byte: `94cee975d0a7c5b68045032053941ed3da015abe6989a364b0d4aa533b5b5c2c`
+- Cache busting OTOMATIS tiap deploy (browser tidak load JS lama dari 304) — INI BAGUS.
 
 ---
 **END OF FILE AGENT.md. JANGAN MODIF BAGIAN ATAS INI TANPA KONFIRMASI USER.**
