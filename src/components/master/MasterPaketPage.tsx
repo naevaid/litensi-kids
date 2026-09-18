@@ -34,6 +34,7 @@ const mapDbPaketToSubscriptionPlan = (db: any): SubscriptionPlan => {
 
   const limits: SubscriptionLimits = {
     maxChildrenDevices: Number(db.max_children_devices ?? 1),
+    maxChildrenDevicesLabel: String(db.max_children_devices_label ?? `${Number(db.max_children_devices ?? 1)} Perangkat Anak`),
     locationTracking: (db.location_tracking ?? 'dasar') as SubscriptionLimits['locationTracking'],
     locationTrackingLabel: String(db.location_tracking_label ?? db.location_tracking ?? ''),
     appRestriction: (db.app_restriction ?? 'terbatas_3') as SubscriptionLimits['appRestriction'],
@@ -42,6 +43,15 @@ const mapDbPaketToSubscriptionPlan = (db: any): SubscriptionPlan => {
     oneWayAudioLabel: String(db.one_way_audio_label ?? (db.one_way_audio ? 'Aktif' : 'Tidak tersedia')),
     liveCamera: Boolean(db.live_camera ?? false),
     liveCameraLabel: String(db.live_camera_label ?? (db.live_camera ? 'Aktif' : 'Tidak tersedia')),
+    // PRIORITAS 1 R6: Batas menit AV 1 KOLAM (Listen + Live Camera DIGABUNG)
+    // Zero hardcode — langsung dari DB kolom paket_langganan.batas_menit_av_harian
+    audioVideoMinutes: Number(db.batas_menit_av_harian ?? 0),
+    audioVideoMinutesLabel: (() => {
+      const val = Number(db.batas_menit_av_harian ?? 0);
+      if (val <= 0) return '0 menit (Total Nonaktif / Belum diset)';
+      if (val >= 1440) return `${(val/1440).toFixed(1).replace('.0','')} hari per hari (Unlimited Kuota)`;
+      return `${val} menit / hari (1 kolam Audio+Video)`;
+    })(),
     maxGeofences,
     maxGeofencesLabel: String(db.max_geofences_label ?? `${maxGeofences} Area`),
     readMessageNotifications: Boolean(db.read_message_notifications ?? false),
@@ -81,6 +91,8 @@ const mapDbPaketToSubscriptionPlan = (db: any): SubscriptionPlan => {
     highlightFeatures,
     activeUsersCount: Number(db.active_users_count ?? 0),
     status: (db.status === 'archived' ? 'archived' : 'active') as SubscriptionPlan['status'],
+    // Simpan ID DB NUMERIC asli (untuk PUT /paket/{id} update master nanti)
+    dbId: idNumeric > 0 ? idNumeric : undefined,
   };
 };
 
@@ -126,16 +138,76 @@ export const MasterPaketPage: React.FC<MasterPaketPageProps> = ({ showToast }) =
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleSavePlanEdit = (e: React.FormEvent) => {
+  const handleSavePlanEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingPlan) return;
+    // Harus ada dbId (ID numeric PK tabel paket_langganan)
+    const idNumeric = editingPlan.dbId;
+    if (!idNumeric || !Number.isFinite(idNumeric)) {
+      showToast(`Gagal simpan: paket ${editingPlan.name} tidak memiliki ID server (dbId undefined). Coba refresh halaman.`, 'error');
+      console.error('[MasterPaket] Save edit tanpa dbId, plan object:', editingPlan);
+      return;
+    }
 
-    const updatedPlans = plans.map(p => (p.id === editingPlan.id ? editingPlan : p));
-    setPlans(updatedPlans);
-    setIsEditModalOpen(false);
-    setEditingPlan(null);
-    console.debug('[MasterPaket] Save edit plan state local:', editingPlan.name);
-    showToast(`Master: Batasan paket ${editingPlan.name} berhasil diperbarui! (sync ke DB via API belum diterapkan)`, 'success');
+    console.groupCollapsed('%c[MasterPaket] Save Edit via PUT /paket/{id}', 'color:#065f46;font-weight:bold');
+    // Mapping balik camelCase frontend → snake_case DB yang diterima PaketController@update
+    // (SINKRON dengan fillable Model PaketLangganan & validator update — ZERO ASUMSI!)
+    const payload: Record<string, any> = {
+      name: editingPlan.name,
+      tagline: editingPlan.tagline,
+      description: editingPlan.description,
+      monthly_price: editingPlan.monthlyPrice,
+      // Annual Price = display annualPrice per month (dibagi 12 di mapping) → kalikan kembali 12 ke TOTAL annual
+      annual_price: editingPlan.annualPrice * 12,
+      badge: editingPlan.badge ?? undefined,
+      popular: Boolean(editingPlan.popular ?? false),
+      status: editingPlan.status === 'archived' ? 'archived' : 'active',
+      // Batasan fitur (sesuai fillable tabel paket_langganan — SINKRONISASI!)
+      max_children_devices: editingPlan.limits.maxChildrenDevices,
+      max_children_devices_label: editingPlan.limits.maxChildrenDevicesLabel,
+      location_tracking: editingPlan.limits.locationTracking,
+      location_tracking_label: editingPlan.limits.locationTrackingLabel,
+      app_restriction: editingPlan.limits.appRestriction,
+      app_restriction_label: editingPlan.limits.appRestrictionLabel,
+      one_way_audio: editingPlan.limits.oneWayAudio,
+      one_way_audio_label: editingPlan.limits.oneWayAudioLabel,
+      live_camera: editingPlan.limits.liveCamera,
+      live_camera_label: editingPlan.limits.liveCameraLabel,
+      // max_geofences: bisa 'unlimited' string atau angka; validator backend string|max:30
+      max_geofences: (editingPlan.limits.maxGeofences === 'unlimited' || typeof editingPlan.limits.maxGeofences === 'string')
+        ? editingPlan.limits.maxGeofences
+        : String(editingPlan.limits.maxGeofences ?? 1),
+      max_geofences_label: editingPlan.limits.maxGeofencesLabel,
+      read_message_notifications: editingPlan.limits.readMessageNotifications,
+      read_message_notifications_label: editingPlan.limits.readMessageNotificationsLabel,
+      remote_screen_lock: editingPlan.limits.remoteScreenLock,
+      remote_screen_lock_label: editingPlan.limits.remoteScreenLockLabel,
+      // PRIORITAS 1 R6: batas menit AV 1 kolam (nilai INT)
+      batas_menit_av_harian: Number(editingPlan.limits.audioVideoMinutes ?? 0),
+    };
+    console.debug('Payload PUT /paket/' + idNumeric, payload);
+
+    setLoading(true);
+    try {
+      const res = await api.put<any>(`/paket/${idNumeric}`, payload, {});
+      if (res?.ok) {
+        console.debug('Response PUT sukses:', res);
+        // Refresh list DARI SERVER (hindari state lokal vs DB mismatch)
+        await loadData();
+        setIsEditModalOpen(false);
+        setEditingPlan(null);
+        showToast(`Batasan paket ${editingPlan.name} BERHASIL disimpan & disinkron ke database.`, 'success');
+      } else {
+        console.warn('Response tidak OK PUT /paket:', res?.status, res?.message);
+        showToast(`Gagal simpan: ${res?.message || 'Server merespon error. Coba lagi nanti.'}`, 'error');
+      }
+    } catch (err: any) {
+      console.error('Exception PUT /paket/' + idNumeric, err);
+      showToast(`Gagal simpan ke server: ${err?.message || 'Terjadi kesalahan jaringan.'}`, 'error');
+    } finally {
+      setLoading(false);
+      console.groupEnd();
+    }
   };
 
   const handleResetToDefault = () => {
@@ -236,9 +308,8 @@ export const MasterPaketPage: React.FC<MasterPaketPageProps> = ({ showToast }) =
           <div className="flex items-center gap-2">
             <Crown className="w-4 h-4 text-amber-500" />
             <span className="text-base font-medium text-slate-900 dark:text-white">
-              {plans.find(p => p.id === 'family_pro')?.activeUsersCount || 890}
+              {Number(plans.find(p => p.id === 'family_pro')?.activeUsersCount ?? 0).toLocaleString('id-ID')}
             </span>
-            <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-normal">+18% bln ini</span>
           </div>
           <p className="text-[11px] text-slate-400 font-normal">Paket terlengkap (Live Kamera)</p>
         </div>
@@ -248,9 +319,8 @@ export const MasterPaketPage: React.FC<MasterPaketPageProps> = ({ showToast }) =
           <div className="flex items-center gap-2">
             <Sparkles className="w-4 h-4 text-indigo-500" />
             <span className="text-base font-medium text-slate-900 dark:text-white">
-              {plans.find(p => p.id === 'premium')?.activeUsersCount || 1250}
+              {Number(plans.find(p => p.id === 'premium')?.activeUsersCount ?? 0).toLocaleString('id-ID')}
             </span>
-            <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-normal">Paling Populer</span>
           </div>
           <p className="text-[11px] text-slate-400 font-normal">Paket 1-3 anak & audio monitor</p>
         </div>
@@ -260,9 +330,8 @@ export const MasterPaketPage: React.FC<MasterPaketPageProps> = ({ showToast }) =
           <div className="flex items-center gap-2">
             <Users className="w-4 h-4 text-slate-500" />
             <span className="text-base font-medium text-slate-900 dark:text-white">
-              {plans.find(p => p.id === 'free')?.activeUsersCount || 342}
+              {Number(plans.find(p => p.id === 'free')?.activeUsersCount ?? 0).toLocaleString('id-ID')}
             </span>
-            <span className="text-[10px] text-slate-400 font-normal">Freemium</span>
           </div>
           <p className="text-[11px] text-slate-400 font-normal">1 Perangkat anak dasar</p>
         </div>
@@ -435,6 +504,23 @@ export const MasterPaketPage: React.FC<MasterPaketPageProps> = ({ showToast }) =
                           <X className="w-3.5 h-3.5" /> Tidak ada
                         </span>
                       )}
+                    </span>
+                  </div>
+
+                  {/* 5b. Kuota Audio+Video 1 Kolam (PRIORITAS 1 R6) */}
+                  <div className="flex items-start justify-between py-1 border-b border-slate-50 dark:border-slate-800/60 gap-2">
+                    <span className="text-slate-600 dark:text-slate-400 flex items-center gap-1.5">
+                      <BarChart3 className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                      Kuota Menit (Audio+Video 1 kolam)
+                    </span>
+                    <span className={`text-right font-medium ${
+                      plan.limits.audioVideoMinutes <= 0
+                        ? 'text-slate-400'
+                        : plan.limits.audioVideoMinutes >= 600
+                          ? 'text-emerald-600 dark:text-emerald-400'
+                          : 'text-indigo-600 dark:text-indigo-400'
+                    }`}>
+                      {plan.limits.audioVideoMinutesLabel}
                     </span>
                   </div>
 
@@ -717,7 +803,7 @@ export const MasterPaketPage: React.FC<MasterPaketPageProps> = ({ showToast }) =
                 <div className="flex items-center justify-between pt-2 border-t border-slate-200/60 dark:border-slate-700/60">
                   <div>
                     <label className="text-slate-900 dark:text-white font-medium flex items-center gap-1.5">
-                      <Camera className="w-3.5 h-3.5 text-amber-500" />
+                    <Camera className="w-3.5 h-3.5 text-amber-500" />
                       Live Monitor Kamera Jarak Jauh
                     </label>
                     <span className="text-[11px] text-slate-400">Akses video kamera depan / belakang anak</span>
@@ -737,6 +823,49 @@ export const MasterPaketPage: React.FC<MasterPaketPageProps> = ({ showToast }) =
                     }
                     className="w-4 h-4 accent-indigo-600 rounded cursor-pointer"
                   />
+                </div>
+
+                {/* Feature 5b: Kuota Menit Audio+Video 1 KOLAM (PRIORITAS 1 R6) */}
+                <div className="flex items-center justify-between pt-2 border-t border-slate-200/60 dark:border-slate-700/60 gap-4">
+                  <div className="flex-1">
+                    <label className="text-slate-900 dark:text-white font-medium flex items-center gap-1.5">
+                      <BarChart3 className="w-3.5 h-3.5 text-indigo-500" />
+                      Kuota Menit Harian (Suara + Live Video
+                    </label>
+                    <span className="text-[11px] text-slate-400 block">
+                      1 kolam gabungan (digabung Listen & Camera). 0 = Tidak Aktif (OFF Total Fitur AV), isikan menit perhari.
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <input
+                      type="number"
+                      min={0}
+                      max={14400}
+                      step={1}
+                      value={editingPlan.limits.audioVideoMinutes}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        const val = raw === '' ? 0 : Math.max(0, Math.min(14400, Number(raw.replace(/\D+/g, ''))));
+                        const label =
+                          val <= 0
+                            ? '0 menit (Total Nonaktif / Belum diset)'
+                            : val >= 1440
+                              ? `${(val/1440).toFixed(1).replace('.0','')} hari per hari (Unlimited)`
+                              : `${val} menit / hari (1 kolam Audio+Video)`;
+                        setEditingPlan({
+                          ...editingPlan,
+                          limits: {
+                            ...editingPlan.limits,
+                            audioVideoMinutes: val,
+                            audioVideoMinutesLabel: label
+                          }
+                        });
+                      }}
+                      className="w-28 px-3 py-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg text-xs text-right text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                      placeholder="0-14400"
+                    />
+                    <span className="text-[11px] text-slate-400 w-14 text-left shrink-0">menit/hr</span>
+                  </div>
                 </div>
 
                 {/* Feature 6: Geofences */}

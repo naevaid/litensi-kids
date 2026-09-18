@@ -5,7 +5,7 @@ import {
   Activity, User, RefreshCw, Smartphone,
   BarChart2, Crown, Video, Mic, MapPin,
   Sliders, ArrowUpRight, CheckCircle2, Layers,
-  Radio, HelpCircle
+  Radio, HelpCircle, Camera, Navigation
 } from 'lucide-react';
 import { User as UserType } from '../../types';
 import { api } from '../../lib/apiClient';
@@ -30,15 +30,10 @@ interface ActivityLogItem {
 const rupiah = (n: number) =>
   n === 0 ? 'Rp 0' : 'Rp ' + new Intl.NumberFormat('id-ID').format(n);
 
-// ===== Limit default untuk masing-masing paket (fallback jika API paket null) =====
-const PAKET_LIMITS: Record<string, {
-  video: number; audio: number; devices: number; geofence: number | 'Unlimited';
-  gps: string; ai: string; msg: string; badge?: string;
-}> = {
-  free:       { video: 30,  audio: 60,   devices: 1,  geofence: 5,              gps: '24 Jam',           ai: 'SafeSearch Browser',  msg: 'SMS Saja',            badge: 'Free' },
-  premium:    { video: 60,  audio: 300,  devices: 3,  geofence: 5,              gps: '7 Hari',            ai: 'SafeFilter Aktif',    msg: 'WA, SMS & OTP',      badge: 'Premium' },
-  family_pro: { video: 180, audio: 1800, devices: 10, geofence: 'Unlimited',   gps: '30 Hari',           ai: 'AI Filter Lengkap',   msg: 'Semua Platform',     badge: 'Perlindungan Total' },
-};
+// ⚠️ ZERO TOLERANCE HARDCODE FALLBACK — SUDAH DIHAPUS SESUAI ATURAN PERMANEN!
+// Dihapus: PAKET_LIMITS yang sebelumnya hardcode free video30/audio60 dst.
+// SEKARANG BATAS PAKET 100% diambil DARI DB SERVER via paketInfo.batas_menit_av_harian (1 kolam AV gabungan).
+// Jika paket = null / batas undefined → fallback JUJUR 0 (bukan hardcode Premium 60 / FP 240).
 
 export const DashboardOverviewPage: React.FC<DashboardOverviewPageProps> = ({
   currentUser,
@@ -151,44 +146,111 @@ export const DashboardOverviewPage: React.FC<DashboardOverviewPageProps> = ({
   const [weeklyMeta, setWeeklyMeta] = useState<any>(null);
   const [daftarPerangkat, setDaftarPerangkat] = useState<any[]>([]);
 
-  // ===== Data user (currentUser dari props, fallback ke session premium) =====
+  // ===== Data user (currentUser dari props) =====
   const activePlanName =
     (currentUser?.activePlan as any) ||
     (currentUser?.activePlanLabel?.toLowerCase().includes('premium') ? 'premium' :
       currentUser?.activePlanLabel?.toLowerCase().includes('family') ? 'family_pro' : 'free') ||
-    'premium';
+    'free';
 
-  const limits = useMemo(() => {
-    const key = String(activePlanName).trim().toLowerCase();
-    return PAKET_LIMITS[key] || PAKET_LIMITS.premium;
-  }, [activePlanName]);
+  // ⚠️ ZERO HARDCODE ID: Cari paket berdasarkan nama/slug cocok dengan activePlanName.
+  // TIDAK ADA hardcode ID = 1/2/3. Jika tidak ketemu → null (fallback jujur paket = {}).
+  const paketInfo = useMemo(() => {
+    if (!Array.isArray(paketList) || paketList.length === 0) return null;
+    const norm = (s: any) => String(s ?? '').toLowerCase().trim();
+    const target = norm(activePlanName);
+    const targetAlt = target.split('_')[0]; // family_pro → 'family'
+    // Prioritas pencocokan: 1) slug exact 2) name contains 3) slug contains
+    const exactSlug = paketList.find(p => norm(p.slug) === target);
+    if (exactSlug) return exactSlug;
+    const nameMatch = paketList.find(p =>
+      norm(p.name).includes(target) || norm(p.name).includes(targetAlt));
+    if (nameMatch) return nameMatch;
+    const slugMatch = paketList.find(p =>
+      norm(p.slug).includes(target) || norm(p.slug).includes(targetAlt));
+    if (slugMatch) return slugMatch;
+    return null;
+  }, [paketList, activePlanName]);
 
-  const paketInfo = useMemo(() =>
-    paketList.find(p => String(p.name).toLowerCase() === String(activePlanName).toLowerCase()) || null
-  , [paketList, activePlanName]);
+  // ⚠️ ZERO HARDCODE FALLBACK: Ambil LIMIT 100% dari paketInfo (DB server flat fields).
+  // TIDAK ADA default hardcode lagi. Jika field tidak ada di paket → JUJUR nilai 0 / string kosong.
+  const paketLimits = useMemo(() => {
+    const pi = paketInfo || ({} as any);
+    // Fields flat dari DB paket_langganan kolom yang ada
+    const maxDevices = Number(pi.max_children_devices ?? pi.max_children ?? 0);
+    const geofenceMaxRaw = pi.max_geofences ?? 0;
+    const maxGeofences: number | 'Unlimited' =
+      String(geofenceMaxRaw).toLowerCase() === 'unlimited'
+        ? 'Unlimited'
+        : Number(geofenceMaxRaw) > 0
+          ? Number(geofenceMaxRaw)
+          : 0;
+    // GPS retention label dari kolom location_tracking_label atau location_tracking
+    const gpsRetention =
+      String(pi.location_tracking_label ?? pi.location_tracking ?? '');
+    // AI Filter = app_restriction_label atau app_restriction
+    const aiFilter =
+      String(pi.app_restriction_label ?? pi.app_restriction ?? '');
+    // Message forward = read_message_notifications_label atau (true/false string)
+    const msgForward =
+      String(pi.read_message_notifications_label ?? (pi.read_message_notifications ? 'Aktif (SMS+Chat)' : 'Tidak Aktif'));
+    // BADGE paket dari kolom badge DB
+    const badgePaket = String(pi.badge ?? (activePlanName === 'family_pro' ? 'Perlindungan Total' : activePlanName === 'premium' ? 'Premium' : 'Paket Dasar'));
 
-  // ===== Resource Data gabungan dari user profile + paket limits + summary API =====
+    // PRIORITAS 1 R6: BATAS MENIT AV 1 KOLAM (DIGABUNG = audio + video SAMA KOLAM, TIDAK DIPISAH!)
+    // Dari DB kolom paket_langganan.batas_menit_av_harian
+    const batasAvMenit = Number(pi.batas_menit_av_harian ?? 0);
+
+    return {
+      devices: maxDevices,
+      geofence: maxGeofences,
+      gps: gpsRetention,
+      ai: aiFilter,
+      msg: msgForward,
+      badge: badgePaket,
+      batasMenitAvGabungan: batasAvMenit,
+    };
+  }, [paketInfo, activePlanName]);
+
+  // Tidak ada state `limits` lagi (sebelumnya pakai PAKET_LIMITS HARDCODE — SUDAH DIHAPUS SESUAI ATURAN ZERO TOLERANCE!)
+
+  // ===== Resource Data gabungan dari user profile + paket DB server + summary API =====
   const resourceData = useMemo(() => {
-    const usedDevices = Number(currentUser?.devicesCount ?? summary?.total_device ?? 0);
-    const maxDevices = Number(limits.devices) || usedDevices + 2;
+    // ⚠️ PRIORITAS SOURCE DATA (STALE COUNTER PREVENTION):
+    // ① UTAMAKAN summary.total_device (fresh dari DB profil_anak COUNT realtime + auto-sync counter users mismatch)
+    // ② Fallback ke currentUser.devicesCount (dari session localStorage — BISA STALE 0 jika manual DB insert)
+    // ③ Akhir fallback ke 0 (jika keduanya tidak ada).
+    // JANGAN DIBALIK! Dulu: currentUser dulu (nilai 0 stale) → summary.total_device (nilai 1 benar) TIDAK TERPAKAI karena 0??1=0.
+    const usedDevices = Number(summary?.total_device ?? currentUser?.devicesCount ?? 0);
+    // max devices = BATAS DARI DB (paketLimits.devices). Jika 0 → fallback JUJUR usedDevices (tanpa tambah +2 hardcode!)
+    const maxDevices =
+      paketLimits.devices > 0 ? paketLimits.devices : Math.max(usedDevices, 1);
     const usedGeofence = Number(summary?.total_zona_geofence ?? 0);
-    const maxGeofenceNum = typeof limits.geofence === 'number' ? limits.geofence : Math.max(usedGeofence, 10);
+    const maxGeofenceNum =
+      typeof paketLimits.geofence === 'number'
+        ? paketLimits.geofence
+        : Math.max(usedGeofence, 1);
 
-    // Video usage: 100% dari API summary, TIDAK ADA fallback persen tetap
-    const apiVideoUsed = Number(summary?.video_used_minutes ?? 0);
-    const apiVideoMax = Number(summary?.video_max_minutes ?? 0) || limits.video;
-    const videoUsedMin = Math.min(apiVideoUsed, apiVideoMax);
-    const videoMaxMin = apiVideoMax;
-
-    // Audio usage: 100% dari API summary, TIDAK ADA fallback persen tetap
-    const apiAudioUsed = Number(summary?.audio_used_minutes ?? 0);
-    const apiAudioMax = Number(summary?.audio_max_minutes ?? 0) || limits.audio;
-    const audioUsedMin = Math.min(apiAudioUsed, apiAudioMax);
-    const audioMaxMin = apiAudioMax;
+    // ⚠️ PRIORITAS 1 R6: Audio + Video DIGABUNG JADI 1 KOLAM (TIDAK DIPISAH LAGI SESUAI USER KEPUTUSAN!)
+    const usedAudio = Number(summary?.audio_used_minutes ?? 0);
+    const usedVideo = Number(summary?.video_used_minutes ?? 0);
+    const totalDigunakanAv = usedAudio + usedVideo; // 1 kolam gabung!
+    // Batas max dari DB paket.batas_menit_av_harian. Jika 0 → unlimited (tampil sebagai -1).
+    // ⚠️ R7 FIX SUMMARY MAX GANDA: API summary SEKARANG video_max_minutes & audio_max_minutes KEDUANYA = 1 KOLAM SAMA NILAI (batasGabunganAllAnak).
+    // JANGAN di-SUM keduanya (dulu 240+240=480 salah)! Cukup ambil SALAH SATU (karena identik) atau pilih yang lebih besar).
+    const batasDariPaket = Number(paketLimits.batasMenitAvGabungan ?? 0);
+    const apiBatasGabungan = Math.max(
+      Number(summary?.video_max_minutes ?? 0),
+      Number(summary?.audio_max_minutes ?? 0),
+      Number((summary as any)?._batas_gabungan_all_anak_menit ?? 0)
+    );
+    const maxGabungan = batasDariPaket > 0 ? batasDariPaket : apiBatasGabungan > 0 ? apiBatasGabungan : 0;
+    const avDigunakanMin = maxGabungan > 0 ? Math.min(totalDigunakanAv, maxGabungan) : totalDigunakanAv;
+    const avMaxMin = maxGabungan;
 
     return {
       planName: paketInfo?.name || (activePlanName === 'family_pro' ? 'Family Pro' : activePlanName === 'premium' ? 'Premium' : 'Free (Dasar)'),
-      planBadge: paketInfo?.badge || limits.badge || (activePlanName === 'free' ? 'Paket Dasar' : 'Paket Terlengkap'),
+      planBadge: paketLimits.badge,
       planStatus: currentUser?.status === 'suspended' ? 'Ditangguhkan' : 'Aktif',
       billingCycle:
         currentUser?.expiresAt
@@ -208,60 +270,75 @@ export const DashboardOverviewPage: React.FC<DashboardOverviewPageProps> = ({
         used: usedDevices,
         max: maxDevices,
         label: `${usedDevices} dari ${maxDevices} Perangkat`,
-        percentage: Math.min(100, Math.round((usedDevices / Math.max(1, maxDevices)) * 100)),
-        note: maxDevices - usedDevices > 0 ? `${maxDevices - usedDevices} slot perangkat tersedia` : 'Semua slot terpakai',
+        percentage: maxDevices > 0 ? Math.min(100, Math.round((usedDevices / maxDevices) * 100)) : 0,
+        note: maxDevices - usedDevices > 0
+          ? `${maxDevices - usedDevices} slot perangkat tersedia`
+          : usedDevices > 0
+            ? 'Semua slot perangkat terpakai'
+            : 'Belum ada perangkat terdaftar',
       },
-      videoMonitor: {
-        usedMinutes: videoUsedMin,
-        maxMinutes: videoMaxMin,
-        label: `${videoUsedMin} / ${videoMaxMin} Menit`,
-        percentage: Math.min(100, Math.round((videoUsedMin / Math.max(1, videoMaxMin)) * 100)),
-        remainingMinutes: Math.max(0, videoMaxMin - videoUsedMin),
-        note: videoUsedMin > 0 && videoUsedMin >= videoMaxMin
-          ? 'Kuota penuh: monitor video dinonaktifkan sementara'
-          : `Sisa kuota video: ${Math.max(0, videoMaxMin - videoUsedMin)} menit lagi tersedia`,
+      audioVideoGabungan: {
+        usedMinutes: avDigunakanMin,
+        maxMinutes: avMaxMin, // 0 = unlimited (paket Free = 0 jika paket TIDAK support fitur AV)
+        label: avMaxMin > 0
+          ? `${avDigunakanMin} / ${avMaxMin} Menit`
+          : totalDigunakanAv > 0
+            ? `${totalDigunakanAv} Menit (Unlimited)`
+            : `0 Menit (Fitur Monitor AV Nonaktif)`,
+        percentage: avMaxMin > 0
+          ? Math.min(100, Math.round((avDigunakanMin / Math.max(1, avMaxMin)) * 100))
+          : 0,
+        remainingMinutes: avMaxMin > 0
+          ? Math.max(0, avMaxMin - avDigunakanMin)
+          : -1, // -1 = unlimited
+        breakdownAudio: usedAudio, // Informasi saja (breakdown tidak dipakai perhitungan)
+        breakdownVideo: usedVideo,
+        note: avMaxMin === 0
+          ? (paketInfo?.one_way_audio || paketInfo?.live_camera)
+            ? 'Fitur Monitor tersedia (Unlimited kuota / Belum diset batas)'
+            : 'Paket saat ini TIDAK MEMILIKI akses Audio & Video Monitor. Upgrade paket.'
+          : avDigunakanMin >= avMaxMin
+            ? '⚠️ Kuota Monitor Audio+Video HABIS — tidak bisa start sesi baru. Upgrade atau Grant Tambah Waktu.'
+            : `Sisa kuota gabungan (Audio+Video 1 kolam): ${Math.max(0, avMaxMin - avDigunakanMin)} menit lagi.`,
       },
-      oneWayAudio: {
-        usedMinutes: audioUsedMin,
-        maxMinutes: audioMaxMin,
-        label: `${audioUsedMin} / ${audioMaxMin} Menit`,
-        percentage: Math.min(100, Math.round((audioUsedMin / Math.max(1, audioMaxMin)) * 100)),
-        remainingMinutes: Math.max(0, audioMaxMin - audioUsedMin),
-        note: audioUsedMin > 0 && audioUsedMin >= audioMaxMin
-          ? 'Kuota penuh: audio 1 arah dinonaktifkan sementara'
-          : `Sisa kuota audio: ${Math.max(0, audioMaxMin - audioUsedMin)} menit HD siap streaming`,
-      },
+      // HAPUS 2 objek terpisah (videoMonitor & oneWayAudio) — sudah digabung jadi audioVideoGabungan!
       geofence: {
         used: usedGeofence,
-        max: typeof limits.geofence === 'number' ? limits.geofence : 'Unlimited',
-        label: typeof limits.geofence === 'number'
-          ? `${usedGeofence} / ${limits.geofence}`
+        max: typeof paketLimits.geofence === 'number' ? paketLimits.geofence : 'Unlimited',
+        label: typeof paketLimits.geofence === 'number'
+          ? `${usedGeofence} / ${paketLimits.geofence} Area`
           : `${usedGeofence} / Tak Terbatas`,
-        percentage: typeof limits.geofence === 'number'
-          ? Math.min(100, Math.round((usedGeofence / Math.max(1, limits.geofence)) * 100))
+        percentage: typeof paketLimits.geofence === 'number' && paketLimits.geofence > 0
+          ? Math.min(100, Math.round((usedGeofence / paketLimits.geofence) * 100))
           : 100,
-        note: usedGeofence === 0 ? 'Belum ada zona dipasang' : `${usedGeofence} zona aktif`,
+        note: usedGeofence === 0
+          ? 'Belum ada zona dipasang'
+          : `${usedGeofence} zona aktif`,
       },
       gpsRetention: {
-        value: limits.gps,
-        label: `Riwayat GPS ${limits.gps}`,
+        value: paketLimits.gps || '-',
+        label: paketLimits.gps ? `Riwayat GPS ${paketLimits.gps}` : 'Riwayat GPS',
         status:
-          activePlanName === 'family_pro' ? 'Presisi Tinggi & SOS'
-          : activePlanName === 'premium' ? 'Realtime Riwayat 7h'
-          : 'Dasar 24 Jam',
+          paketLimits.gps && String(paketLimits.gps).toLowerCase().includes('30')
+            ? 'Presisi Tinggi & SOS 30 Hari'
+            : paketLimits.gps && String(paketLimits.gps).toLowerCase().includes('7')
+              ? 'Realtime Riwayat 7 Hari'
+              : paketLimits.gps
+                ? paketLimits.gps
+                : 'Dasar 24 Jam',
       },
       aiFilter: {
-        value: limits.ai,
+        value: paketLimits.ai || '-',
         label: 'Filter AI & SafeSearch',
-        status: activePlanName === 'free' ? 'SafeSearch Browser' : 'Auto-Block Konten Dewasa',
+        status: paketLimits.ai ? String(paketLimits.ai) : 'SafeSearch Browser Dasar',
       },
       messageForward: {
-        value: limits.msg,
+        value: paketLimits.msg || '-',
         label: 'Terusan Notifikasi Pesan',
-        status: activePlanName === 'free' ? 'Hanya SMS dasar' : 'Deteksi Kata Sensitif Aktif',
+        status: paketLimits.msg ? String(paketLimits.msg) : 'Hanya SMS dasar',
       },
     };
-  }, [currentUser, limits, paketInfo, summary, activePlanName]);
+  }, [currentUser, paketLimits, paketInfo, summary, activePlanName]);
 
   // ===== Gabung log geofence + notifikasi jadi activity logs =====
   const logs: ActivityLogItem[] = useMemo(() => {
@@ -560,7 +637,7 @@ export const DashboardOverviewPage: React.FC<DashboardOverviewPageProps> = ({
         </div>
       </div>
 
-      {/* 4 Summary Stats Grid: Responsive 1 col (mobile) -> 2 cols (tablet) -> 4 cols (desktop) */}
+      {/* 4 Summary Stats Grid: Responsive 1 col (mobile) -> 2 cols (tablet) -> 3 cols (desktop - 3 karena AV gabungan, video+audio digabung 1 card) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         {/* Card 1: Paket Langganan Aktif */}
         <div className="bg-white dark:bg-slate-800/90 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4 sm:p-5 shadow-2xs flex items-center justify-between">
@@ -578,51 +655,74 @@ export const DashboardOverviewPage: React.FC<DashboardOverviewPageProps> = ({
           </div>
         </div>
 
-        {/* Card 2: Limit Kuota Monitor Video */}
-        <div className="bg-white dark:bg-slate-800/90 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4 sm:p-5 shadow-2xs flex items-center justify-between">
+        {/* Card 2: BATAS KUOTA MONITOR AUDIO+VIDEO 1 KOLAM (PRIORITAS 1 R6) — gabung Video dan Audio TIDAK DIPISAH LAGI! */}
+        <div
+          onClick={() => onNavigateToTab('monitor')}
+          className="bg-white dark:bg-slate-800/90 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4 sm:p-5 shadow-2xs flex items-center justify-between group cursor-pointer hover:border-indigo-400/50 hover:shadow-sm transition-all">
           <div className="space-y-1">
-            <span className="text-xs text-slate-400 font-normal block">Kuota Monitor Video</span>
+            <span className="text-xs text-slate-400 font-normal block">Kuota Monitor Streaming</span>
             <span className="text-base font-medium text-slate-900 dark:text-white block">
-              {resourceData.videoMonitor.label}
+              {resourceData.audioVideoGabungan.label}
             </span>
-            <span className="text-xs text-indigo-600 dark:text-indigo-400 font-normal block">
-              Sisa: {resourceData.videoMonitor.remainingMinutes} menit
+            <span className={`text-xs font-normal block ${
+              resourceData.audioVideoGabungan.remainingMinutes === 0
+                ? 'text-rose-600 dark:text-rose-400'
+                : resourceData.audioVideoGabungan.maxMinutes === 0
+                  ? 'text-slate-500 dark:text-slate-400'
+                  : 'text-indigo-600 dark:text-indigo-400'
+            }`}>
+              {resourceData.audioVideoGabungan.maxMinutes > 0
+                ? resourceData.audioVideoGabungan.remainingMinutes === 0
+                  ? 'Kuota habis'
+                  : `Sisa ${resourceData.audioVideoGabungan.remainingMinutes} menit`
+                : resourceData.audioVideoGabungan.remainingMinutes === -1
+                  ? 'Unlimited'
+                  : 'Butuh upgrade paket'
+              }
             </span>
           </div>
-          <div className="p-3 bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 rounded-2xl shrink-0">
-            <Video className="w-5 h-5" />
+          <div className="p-3 bg-gradient-to-br from-indigo-50 to-emerald-50 dark:from-indigo-950/60 dark:to-emerald-950/40 text-indigo-600 dark:text-indigo-400 rounded-2xl shrink-0">
+            <Camera className="w-5 h-5" />
           </div>
         </div>
 
-        {/* Card 3: Limit Kuota Audio Satu Arah */}
-        <div className="bg-white dark:bg-slate-800/90 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4 sm:p-5 shadow-2xs flex items-center justify-between">
-          <div className="space-y-1">
-            <span className="text-xs text-slate-400 font-normal block">Kuota Audio 1 Arah</span>
-            <span className="text-base font-medium text-slate-900 dark:text-white block">
-              {resourceData.oneWayAudio.label}
-            </span>
-            <span className="text-xs text-emerald-600 dark:text-emerald-400 font-normal block">
-              Sisa: {resourceData.oneWayAudio.remainingMinutes} menit
-            </span>
-          </div>
-          <div className="p-3 bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 rounded-2xl shrink-0">
-            <Mic className="w-5 h-5" />
-          </div>
-        </div>
-
-        {/* Card 4: Batas Perangkat Terhubung */}
-        <div className="bg-white dark:bg-slate-800/90 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4 sm:p-5 shadow-2xs flex items-center justify-between">
+        {/* Card 3: Batas Perangkat Terhubung */}
+        <div
+          onClick={() => onNavigateToTab('anak')}
+          className="bg-white dark:bg-slate-800/90 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4 sm:p-5 shadow-2xs flex items-center justify-between hover:border-purple-400/50 hover:bg-purple-50/40 dark:hover:bg-purple-950/30 transition-all cursor-pointer group"
+        >
           <div className="space-y-1">
             <span className="text-xs text-slate-400 font-normal block">Batas Perangkat</span>
-            <span className="text-base font-medium text-slate-900 dark:text-white block">
+            <span className="text-base font-medium text-slate-900 dark:text-white block group-hover:text-purple-700 dark:group-hover:text-purple-300 transition-colors">
               {resourceData.devices.label}
             </span>
-            <span className="text-xs text-slate-500 dark:text-slate-400 font-normal block">
-              Slot kosong: {resourceData.devices.max - resourceData.devices.used} perangkat
+            <span className="text-xs text-slate-500 dark:text-slate-400 font-normal block flex items-center gap-1">
+              Slot kosong: {Math.max(0, resourceData.devices.max - resourceData.devices.used)} perangkat
+              <span className="text-purple-600 dark:text-purple-400 font-medium ml-1">Buka →</span>
             </span>
           </div>
-          <div className="p-3 bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 rounded-2xl shrink-0">
+          <div className="p-3 bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 rounded-2xl shrink-0 group-hover:scale-105 transition-transform">
             <Smartphone className="w-5 h-5" />
+          </div>
+        </div>
+
+        {/* Card 4: Batasan Geofence */}
+        <div
+          onClick={() => onNavigateToTab('geofence')}
+          className="bg-white dark:bg-slate-800/90 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4 sm:p-5 shadow-2xs flex items-center justify-between hover:border-rose-400/50 hover:bg-rose-50/40 dark:hover:bg-rose-950/30 transition-all cursor-pointer group"
+        >
+          <div className="space-y-1">
+            <span className="text-xs text-slate-400 font-normal block">Batas Area Geofence</span>
+            <span className="text-base font-medium text-slate-900 dark:text-white block group-hover:text-rose-700 dark:group-hover:text-rose-300 transition-colors">
+              {resourceData.geofence.label}
+            </span>
+            <span className="text-xs text-rose-600 dark:text-rose-400 font-normal flex items-center gap-1">
+              <MapPin className="w-3 h-3 shrink-0" /> {resourceData.geofence.note}
+              <span className="font-medium ml-1">Buka →</span>
+            </span>
+          </div>
+          <div className="p-3 bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 rounded-2xl shrink-0 group-hover:scale-105 transition-transform">
+            <Navigation className="w-5 h-5" />
           </div>
         </div>
       </div>
@@ -679,64 +779,61 @@ export const DashboardOverviewPage: React.FC<DashboardOverviewPageProps> = ({
               </button>
             </div>
 
-            {/* Quota Progress Cards Grid */}
+            {/* Quota Progress Cards Grid — 3 cards (AV GABUNGAN, Perangkat, Geofence) — SESUAI PRIORITAS 1 R6: AUDIO+VIDEO 1 KOLAM! */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-1">
-              {/* 1. Limit Kuota Monitor Video */}
-              <div 
+              {/* 1. KUOTA MONITOR SUARA + LIVE VIDEO 1 KOLAM (Gabung, TIDAK DIPISAH) */}
+              <div
                 onClick={() => onNavigateToTab('monitor')}
                 className="p-3.5 rounded-xl border border-slate-200/80 dark:border-slate-700/70 bg-slate-50/60 dark:bg-slate-900/40 space-y-2 hover:border-indigo-400/50 hover:bg-slate-100/70 dark:hover:bg-slate-800/60 transition-all cursor-pointer group"
               >
                 <div className="flex items-center justify-between text-xs">
                   <span className="font-medium text-slate-800 dark:text-slate-200 flex items-center gap-1.5 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
-                    <Video className="w-3.5 h-3.5 text-indigo-500" />
-                    <span>Monitor Video (Kamera)</span>
+                    <Camera className="w-3.5 h-3.5 text-indigo-500" />
+                    <span>Live Audio & Camera</span>
                   </span>
                   <span className="text-[11px] text-slate-500 dark:text-slate-400 font-normal">
-                    {resourceData.videoMonitor.label}
+                    {resourceData.audioVideoGabungan.label}
                   </span>
                 </div>
                 <div className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
                   <div
-                    className="h-full bg-indigo-500 rounded-full transition-all"
-                    style={{ width: `${resourceData.videoMonitor.percentage}%` }}
+                    className={`h-full rounded-full transition-all ${
+                      resourceData.audioVideoGabungan.maxMinutes === 0
+                        ? 'bg-slate-300 dark:bg-slate-600'
+                        : resourceData.audioVideoGabungan.percentage >= 100
+                          ? 'bg-gradient-to-r from-rose-500 to-red-500'
+                          : resourceData.audioVideoGabungan.percentage >= 75
+                            ? 'bg-gradient-to-r from-amber-500 to-orange-500'
+                            : 'bg-gradient-to-r from-indigo-500 to-emerald-500'
+                    }`}
+                    style={{
+                      width: `${resourceData.audioVideoGabungan.maxMinutes > 0
+                        ? resourceData.audioVideoGabungan.percentage
+                        : 0}%`
+                    }}
                   />
                 </div>
                 <div className="flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400 font-normal pt-0.5">
-                  <span>{resourceData.videoMonitor.percentage}% terpakai</span>
-                  <span className="text-indigo-600 dark:text-indigo-400 font-medium">Buka Monitor →</span>
+                  <span>
+                    {resourceData.audioVideoGabungan.maxMinutes > 0
+                      ? `${resourceData.audioVideoGabungan.percentage}% terpakai`
+                      : 'Belum diset batas'}
+                    {' · '}
+                    <span className="text-slate-600 dark:text-slate-300">
+                      {resourceData.audioVideoGabungan.breakdownAudio + resourceData.audioVideoGabungan.breakdownVideo}m total
+                    </span>
+                  </span>
+                  <span className="text-indigo-600 dark:text-indigo-400 font-medium">Buka →</span>
                 </div>
               </div>
 
-              {/* 2. Limit Kuota Audio Satu Arah */}
-              <div 
-                onClick={() => onNavigateToTab('monitor')}
-                className="p-3.5 rounded-xl border border-slate-200/80 dark:border-slate-700/70 bg-slate-50/60 dark:bg-slate-900/40 space-y-2 hover:border-emerald-400/50 hover:bg-slate-100/70 dark:hover:bg-slate-800/60 transition-all cursor-pointer group"
+              {/* 2. Batas Perangkat Anak */}
+              <div
+                onClick={() => onNavigateToTab('anak')}
+                className="p-3.5 rounded-xl border border-slate-200/80 dark:border-slate-700/70 bg-slate-50/60 dark:bg-slate-900/40 space-y-2 hover:border-purple-400/50 hover:bg-slate-100/70 dark:hover:bg-slate-800/60 transition-all cursor-pointer group"
               >
                 <div className="flex items-center justify-between text-xs">
-                  <span className="font-medium text-slate-800 dark:text-slate-200 flex items-center gap-1.5 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
-                    <Mic className="w-3.5 h-3.5 text-emerald-500" />
-                    <span>Suara Satu Arah (Audio)</span>
-                  </span>
-                  <span className="text-[11px] text-slate-500 dark:text-slate-400 font-normal">
-                    {resourceData.oneWayAudio.label}
-                  </span>
-                </div>
-                <div className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-emerald-500 rounded-full transition-all"
-                    style={{ width: `${resourceData.oneWayAudio.percentage}%` }}
-                  />
-                </div>
-                <div className="flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400 font-normal pt-0.5">
-                  <span>{resourceData.oneWayAudio.percentage}% terpakai</span>
-                  <span className="text-emerald-600 dark:text-emerald-400 font-medium">Buka Audio →</span>
-                </div>
-              </div>
-
-              {/* 3. Batas Perangkat Anak */}
-              <div className="p-3.5 rounded-xl border border-slate-200/80 dark:border-slate-700/70 bg-slate-50/60 dark:bg-slate-900/40 space-y-2">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="font-medium text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                  <span className="font-medium text-slate-800 dark:text-slate-200 flex items-center gap-1.5 group-hover:text-purple-700 dark:group-hover:text-purple-300 transition-colors">
                     <Smartphone className="w-3.5 h-3.5 text-purple-500" />
                     <span>Batas Perangkat Anak</span>
                   </span>
@@ -752,14 +849,17 @@ export const DashboardOverviewPage: React.FC<DashboardOverviewPageProps> = ({
                 </div>
                 <div className="flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400 font-normal pt-0.5">
                   <span>{resourceData.devices.percentage}% terhubung</span>
-                  <span className="text-purple-600 dark:text-purple-400">{resourceData.devices.note}</span>
+                  <span className="text-purple-600 dark:text-purple-400 font-medium">Buka →</span>
                 </div>
               </div>
 
-              {/* 4. Area Geofence */}
-              <div className="p-3.5 rounded-xl border border-slate-200/80 dark:border-slate-700/70 bg-slate-50/60 dark:bg-slate-900/40 space-y-2">
+              {/* 3. Area Geofence Terpasang */}
+              <div
+                onClick={() => onNavigateToTab('geofence')}
+                className="p-3.5 rounded-xl border border-slate-200/80 dark:border-slate-700/70 bg-slate-50/60 dark:bg-slate-900/40 space-y-2 hover:border-rose-400/50 hover:bg-slate-100/70 dark:hover:bg-slate-800/60 transition-all cursor-pointer group"
+              >
                 <div className="flex items-center justify-between text-xs">
-                  <span className="font-medium text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                  <span className="font-medium text-slate-800 dark:text-slate-200 flex items-center gap-1.5 group-hover:text-rose-700 dark:group-hover:text-rose-300 transition-colors">
                     <MapPin className="w-3.5 h-3.5 text-rose-500" />
                     <span>Area Geofence Terpasang</span>
                   </span>
@@ -775,7 +875,7 @@ export const DashboardOverviewPage: React.FC<DashboardOverviewPageProps> = ({
                 </div>
                 <div className="flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400 font-normal pt-0.5">
                   <span>{Number(summary.total_zona_geofence ?? 0)} Zona Aktif</span>
-                  <span className="text-slate-500 dark:text-slate-400 truncate max-w-[130px]">{resourceData.geofence.note}</span>
+                  <span className="text-rose-600 dark:text-rose-400 font-medium">Buka →</span>
                 </div>
               </div>
             </div>

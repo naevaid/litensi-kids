@@ -95,7 +95,7 @@ const makeMapDbZonaGeofenceToInterface = (children: ChildOptionItem[]) => (db: a
   assignedChildren,
   notifyOnEnter: Boolean(db.notify_on_enter ?? true),
   notifyOnExit: Boolean(db.notify_on_exit ?? true),
-  status: db.status === 'active' ? 'active' : (db.status === 'inactive' ? 'inactive' : 'unknown'),
+  status: db.status === 'active' ? 'active' : 'inactive',
     color: String(db.color ?? getColorByCategory(db.category)),
     lastTriggered,
     createdAt: String(db.created_at ?? new Date().toISOString().split('T')[0]),
@@ -386,7 +386,7 @@ export const GeofencePage: React.FC<GeofencePageProps> = ({ showToast }) => {
     try {
       setIsSaving(true);
       console.debug(`%c[Geofence] DELETE /geofence/${deleteZoneTarget.id}`, 'color:#0d9488;font-weight:600');
-      await api.delete(`/geofence/${deleteZoneTarget.id}`);
+      await api.del(`/geofence/${deleteZoneTarget.id}`);
       showToast(`Geofence "${deleteZoneTarget.name}" berhasil dihapus`, 'info');
       setDeleteZoneTarget(null);
       await loadData();

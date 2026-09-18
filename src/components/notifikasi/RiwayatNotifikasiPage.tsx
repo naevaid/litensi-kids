@@ -244,7 +244,7 @@ export const RiwayatNotifikasiPage: React.FC<RiwayatNotifikasiPageProps> = ({ sh
     console.groupCollapsed(`%c[Notifikasi] handleDeleteNotif DELETE /notifikasi/${id}`, 'color:#ec4899;font-weight:700');
     try {
       setIsSaving(true);
-      await api.delete(`/notifikasi/${id}`);
+      await api.del(`/notifikasi/${id}`);
       if (viewingNotif?.id === id) setViewingNotif(null);
       showToast('Notifikasi dihapus dari riwayat', 'info');
       await loadData();

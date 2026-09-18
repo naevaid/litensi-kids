@@ -366,7 +366,7 @@ export async function compressImageClient(
 // ==========================================================================
 // Helper: Mapper snake_case Laravel DB → camelCase TypeScript (khusus User object)
 // ==========================================================================
-export function mapDbUserToTsUser(dbUser: Record<string, any>): import('../../types').User {
+export function mapDbUserToTsUser(dbUser: Record<string, any>): import('../types').User {
   return {
     id: dbUser.id,
     name: dbUser.name,
@@ -381,7 +381,7 @@ export function mapDbUserToTsUser(dbUser: Record<string, any>): import('../../ty
     status: dbUser.status,
     phone: dbUser.phone,
     lastActive: dbUser.last_active ?? dbUser.lastActive,
-    pinMasterExists: !!dbUser.pin_master_exists ?? !!dbUser.pinMasterExists,
+    pinMasterExists: Boolean(dbUser.pin_master_exists ?? dbUser.pinMasterExists),
     pinMaster: null, // NEVER kirim actual pin value, client tidak butuh
   };
 }

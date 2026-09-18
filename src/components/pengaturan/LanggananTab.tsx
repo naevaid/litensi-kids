@@ -205,6 +205,13 @@ export const mapDbPaketToPlan = (dbRow: any): SubscriptionPlan | null => {
     oneWayAudioLabel: String(dbRow.one_way_audio_label ?? (dbRow.one_way_audio ? 'Aktif' : 'Tidak tersedia')),
     liveCamera: Boolean(dbRow.live_camera),
     liveCameraLabel: String(dbRow.live_camera_label ?? (dbRow.live_camera ? 'Aktif' : 'Tidak tersedia')),
+    audioVideoMinutes: Number(dbRow.batas_menit_av_harian ?? 0),
+    audioVideoMinutesLabel: (() => {
+      const val = Number(dbRow.batas_menit_av_harian ?? 0);
+      if (val <= 0) return '0 menit (Total Nonaktif / Belum diset)';
+      if (val >= 1440) return `${(val/1440).toFixed(1).replace('.0','')} hari per hari (Unlimited Kuota)`;
+      return `${val} menit / hari (1 kolam Audio+Video)`;
+    })(),
     maxGeofences: maxGeofencesVal,
     maxGeofencesLabel: String(dbRow.max_geofences_label ?? (maxGeofencesVal === 'unlimited' ? 'Unlimited' : `${maxGeofencesVal} Area`)),
     readMessageNotifications: Boolean(dbRow.read_message_notifications),
@@ -373,7 +380,7 @@ export const LanggananTab: React.FC<LanggananTabProps> = ({ showToast }) => {
         paket_id: numericPaketId,
         periode,
       });
-      if (upgradeResp?.success !== false) {
+      if (upgradeResp?.ok !== false) {
         setActivePlanId(String(matchRow.name).toLowerCase());
         setActivePlanLabel(String(upgradeResp?.data?.user?.active_plan_label ?? targetPlan.badge ?? targetPlan.name));
         if (upgradeResp?.data?.user?.expires_at) {

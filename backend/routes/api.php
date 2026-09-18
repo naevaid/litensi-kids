@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\API\AnakController;
 use App\Http\Controllers\API\AuthController;
+use App\Http\Controllers\API\ChatInboxController;
 use App\Http\Controllers\API\DashboardController;
 use App\Http\Controllers\API\GeofenceController;
 use App\Http\Controllers\API\KontrolAplikasiController;
@@ -94,6 +95,18 @@ Route::prefix('v1')->group(function () {
         Route::get('/permintaan', [KontrolAplikasiController::class, 'indexPermintaan']);
         Route::post('/permintaan/{id}/approve', [KontrolAplikasiController::class, 'approvePermintaan'])->whereNumber('id');
         Route::post('/permintaan/{id}/reject', [KontrolAplikasiController::class, 'rejectPermintaan'])->whereNumber('id');
+    });
+
+    // === Modul Pesan & Inbox Tab 1: Chat Orang Tua ↔ Anak + Permintaan Waktu Layar (R3) ===
+    // Urutan WAJIB: SEBELUM group anak (karena anak/{id} wildcard bisa match /chat/xxx jika terbalik!)
+    Route::prefix('chat')->group(function () {
+        // CH1 — Route SPESIFIK non-wildcard DITULIS DULU (aturan anti TypeError!)
+        Route::get('/threads', [ChatInboxController::class, 'getThreads']);
+
+        // CH2, CH3, CH4 — wildcard {anakId} dengan REGEX WHERE NUMBER (hanya numeric!)
+        Route::get('/{anakId}/messages', [ChatInboxController::class, 'getMessages'])->whereNumber('anakId');
+        Route::post('/{anakId}/send', [ChatInboxController::class, 'sendMessage'])->whereNumber('anakId');
+        Route::post('/{anakId}/grant-waktu-layar', [ChatInboxController::class, 'grantWaktuLayar'])->whereNumber('anakId');
     });
 
     // === Modul Kelola Anak (ProfilAnak) ===

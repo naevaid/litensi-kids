@@ -147,7 +147,7 @@ export const LanggananSayaTab: React.FC<LanggananSayaTabProps> = ({ showToast })
         paket_id: numericPaketId,
         periode,
       });
-      if (upgradeResp?.success !== false) {
+      if (upgradeResp?.ok !== false) {
         const newActiveId = String(matchRow.name).toLowerCase();
         setActivePlanId(newActiveId);
         setActivePlanLabel(String(upgradeResp?.data?.user?.active_plan_label ?? targetPlan.badge ?? targetPlan.name));

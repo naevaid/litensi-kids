@@ -601,6 +601,10 @@ export interface SubscriptionLimits {
   readMessageNotificationsLabel: string;
   remoteScreenLock: boolean;
   remoteScreenLockLabel: string;
+  // PRIORITAS 1 R6: Batas menit AUDIO + VIDEO digabung 1 KOLAM (Listen Suara + Live Camera)
+  // Nilai dari DB paket_langganan.batas_menit_av_harian (0 = unlimited jika paket ijinkan fitur tsb)
+  audioVideoMinutes: number;
+  audioVideoMinutesLabel: string;
 }
 
 export interface SubscriptionPlan {
@@ -616,6 +620,8 @@ export interface SubscriptionPlan {
   highlightFeatures: string[];
   activeUsersCount?: number;
   status: 'active' | 'archived';
+  // ID PK NUMERIC di tabel paket_langganan (untuk call API PUT /paket/{id}, karena slug cuma frontend internal)
+  dbId?: number;
 }
 
 export interface ForwardedNotification {

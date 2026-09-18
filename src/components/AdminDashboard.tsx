@@ -139,7 +139,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       parsed.page, parsed.pengaturanSub ?? '(default)', parsed.inboxSub ?? '(default)');
 
     // 1. Set activeTab dari initialPage props (source of truth dari App.tsx top-level)
-    const initTab = pageToActiveTab(initialPage);
+    const initTab = pageToActiveTab((initialPage ?? 'dashboard') as Page);
     setActiveTab(initTab);
 
     // 2. Set subtab Pengaturan / Inbox dari path suffix

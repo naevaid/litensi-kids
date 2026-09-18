@@ -117,27 +117,45 @@ class MonitorAVController extends Controller
                 ]
             );
 
-            // JIKA paket user berubah (contoh: user upgrade Free → Premium) TAPI row kuota HARI INI sudah dibuat dengan nilai lama,
-            // kita sync otomatis ke batas terbaru agar tidak stuck lama. PERHATIAN: tidak boleh mengurangi total_digunakan_menit (akuntansi).
-            if ((int)$kuota->paket_kuota_menit_harian !== (int)$defaultPaketKuota && (int)$kuota->total_digunakan_menit === 0) {
-                // Baru di update jika belum pernah dipakai sama sekali (total digunakan 0, aman)
+            // SELALU sinkronisasi paket_kuota_menit_harian ke nilai TERBARU dari helper 3-layer priority
+            // (override anak > paket user sekarang > 0 jujur). Sebelumnya hanya sync jika total=0 — SALAH!
+            // Contoh kasus user edit Family Pro batas 240 → 3 menit via halaman Master Paket ketika anak
+            // sudah pakai 4 menit audio hari ini → row kuota NADIA tetep 240 STALE, beda dengan Dashboard.
+            // AKIBAT: Monitor AV menampilkan batas 240 PALSU, Dashboard benar 3 — TIDAK KONSISTEN!
+            // Kita BOLEH update batas kapanpun (tidak hilang akuntansi total_digunakan_menit), lalu recompute
+            // otomatis sisa + persen + status dibawah.
+            if ((int)$kuota->paket_kuota_menit_harian !== (int)$defaultPaketKuota) {
                 $kuota->paket_kuota_menit_harian = $defaultPaketKuota;
-                $kuota->sisa_kuota_menit = ($defaultPaketKuota > 0 ? $defaultPaketKuota : -1);
-                $kuota->save();
-            } elseif ((int)$kuota->paket_kuota_menit_harian < (int)$kuota->total_digunakan_menit) {
-                // Protection: Paket DITURUNKAN (misal dari 240→60) tapi sudah pakai 100 → tetap sisa 0 (tidak minus). Compute ulang.
-                $kuota->sisa_kuota_menit = 0;
-                $kuota->save();
+                $mismatch_before_compute = true;
+            } else {
+                $mismatch_before_compute = false;
             }
 
-            // Hitung sisa realtime tiap request (jika paket unlimited = -1 else paket - total = max 0)
-            $sisaReal = $kuota->paket_kuota_menit_harian === 0
-                ? -1
-                : max(0, (int)$kuota->paket_kuota_menit_harian - (int)$kuota->total_digunakan_menit);
+            // ========== AUTO-SYNC INTEGRITAS KUOTA (PENTING!): SELALU RECOMPUTE & JIKA MISMATCH SAVE ==========
+            $realAudio = (int)$kuota->digunakan_audio_menit;
+            $realVideo = (int)$kuota->digunakan_video_menit;
+            $realTotal = $realAudio + $realVideo;
+            // PENTING: pakai defaultPaketKuota (NILAI ASLI DARI HELPER, SUMBER SAMA DENGAN DASHBOARD!)
+            // BUKAN lagi $kuota->paket_kuota_menit_harian (karena bisa saja berbarengan ini kita update diatas & nilai tersimpan tapi variable local tidak reflect)
+            $realBatas = (int)$defaultPaketKuota;
+            $realSisa = $realBatas === 0 ? -1 : max(0, $realBatas - $realTotal);
+            $realPersen = $realBatas > 0 ? min(100, (int)round(($realTotal / $realBatas) * 100)) : 0;
 
-            // Jaga agar DB sinkron, simpan sisa denormalized supaya query lain cepat
-            if ($kuota->sisa_kuota_menit !== $sisaReal) {
-                $kuota->sisa_kuota_menit = $sisaReal;
+            // Cek mismatch dan auto-save agar DB kembali sinkron kedepannya
+            // PENTING: HANYA simpan field yang BENAR-BENAR ADA di real tabel (cek migration 000005).
+            // Field `persentase_terpakai` TIDAK PERNAH ada di schema (bukan kolom DB asli), jadi
+            // kita JANGAN assign ke model (SQLSTATE 42S22 1054 Unknown column). Cukup compute saja
+            // untuk response endpoint.
+            $mismatch = $mismatch_before_compute;
+            if ((int)$kuota->total_digunakan_menit !== $realTotal) {
+                $kuota->total_digunakan_menit = $realTotal;
+                $mismatch = true;
+            }
+            if ((int)$kuota->sisa_kuota_menit !== $realSisa) {
+                $kuota->sisa_kuota_menit = $realSisa;
+                $mismatch = true;
+            }
+            if ($mismatch) {
                 $kuota->save();
             }
 
@@ -146,19 +164,19 @@ class MonitorAVController extends Controller
                 'nama_anak' => $anak->name,
                 'device_model' => $anak->device_model ?? null,
                 'tanggal' => $kuota->tanggal,
-                'paket_kuota_menit_harian' => $kuota->paket_kuota_menit_harian,
-                'digunakan_audio_menit' => $kuota->digunakan_audio_menit,
-                'digunakan_video_menit' => $kuota->digunakan_video_menit,
-                'total_digunakan_menit' => $kuota->total_digunakan_menit,
-                'sisa_kuota_menit' => $sisaReal, // -1 = unlimited (tanpa batas)
-                'persentase_terpakai' => $kuota->paket_kuota_menit_harian > 0
-                    ? min(100, (int) round(($kuota->total_digunakan_menit / $kuota->paket_kuota_menit_harian) * 100))
-                    : 0, // 0% untuk unlimited
+                'paket_kuota_menit_harian' => $realBatas,
+                'digunakan_audio_menit' => $realAudio,
+                'digunakan_video_menit' => $realVideo,
+                // PENTING: Pakai $realTotal (hasil penjumlahan audio+video), BUKAN $kuota->total_digunakan_menit (bisa stale mismatch)!
+                'total_digunakan_menit' => $realTotal,
+                'sisa_kuota_menit' => $realSisa,
+                'persentase_terpakai' => $realPersen,
                 'last_mode' => $kuota->last_mode,
                 'last_started_at' => $kuota->last_started_at,
                 'last_stopped_at' => $kuota->last_stopped_at,
                 'last_sesi_id' => $kuota->last_sesi_id,
-                'status_kuota' => $this->computeStatusKuota($kuota),
+                // Status badge juga dihitung berdasarkan nilai computed (bukan row DB mentah)
+                'status_kuota' => $this->computeStatusKuotaFromValues($realBatas, $realTotal),
             ];
         }
 
@@ -173,12 +191,25 @@ class MonitorAVController extends Controller
         ]);
     }
 
-    // Helper hitung label status kuota (untuk UI badge)
+    // Helper hitung label status kuota (untuk UI badge) — dari Model
     private function computeStatusKuota(KuotaAvMonitorHarian $k): string
     {
-        if ($k->paket_kuota_menit_harian === 0) return 'unlimited';
-        if ($k->total_digunakan_menit >= $k->paket_kuota_menit_harian) return 'habis';
-        $persen = ($k->total_digunakan_menit / $k->paket_kuota_menit_harian) * 100;
+        return $this->computeStatusKuotaFromValues(
+            (int)$k->paket_kuota_menit_harian,
+            (int)($k->total_digunakan_menit ?? ((int)$k->digunakan_audio_menit + (int)$k->digunakan_video_menit))
+        );
+    }
+
+    // Helper hitung label status kuota (versi RAW VALUES — tidak perlu instance Model)
+    // Dipakai setelah recompute realBatas & realTotal dari audio+video
+    private function computeStatusKuotaFromValues(int $batasMenit, int $totalDigunakanMenit): string
+    {
+        // Rule 1: Batas = 0 → Unlimited (tanpa batas harian)
+        if ($batasMenit <= 0) return 'unlimited';
+        // Rule 2: Total sudah menyentuh atau melebihi batas → HABIS
+        if ($totalDigunakanMenit >= $batasMenit) return 'habis';
+        // Rule 3: Persentase >= 80% → Hampir Habis (warning amber)
+        $persen = ($totalDigunakanMenit / $batasMenit) * 100;
         if ($persen >= 80) return 'hampir_habis';
         return 'normal';
     }

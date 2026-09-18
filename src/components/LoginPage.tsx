@@ -158,7 +158,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate, onLoginSuccess
           </div>
         </div>
 
-        {!import.meta.env.PROD && (
+        {!(import.meta as any).env?.PROD && (
           // Hanya tampilkan Akun Demo Cepat di mode pengembangan (bukan production)
           <div className="mb-5 p-3 bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-100/60 dark:border-indigo-900/40 rounded-xl text-[11px] text-indigo-700 dark:text-indigo-300 leading-relaxed">
             <span className="font-medium block mb-1">💡 Akun Demo Cepat (Database Real):</span>

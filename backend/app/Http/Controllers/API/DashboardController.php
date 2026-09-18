@@ -4,17 +4,56 @@ namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\Controller;
 use App\Models\CatatanPendapatan;
+use App\Models\KuotaAvMonitorHarian;
 use App\Models\LogGeofence;
 use App\Models\NotifikasiDiteruskan;
 use App\Models\PaketLangganan;
 use App\Models\ProfilAnak;
 use App\Models\User;
 use App\Models\ZonaGeofence;
+use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class DashboardController extends Controller
 {
+    // Helper normalisasi nama paket ke snake_case — konsisten dengan MonitorAVController & PaketController
+    private function normalizePlanId(string $raw): string
+    {
+        $norm = trim((string)$raw);
+        $norm = preg_replace('/[^a-zA-Z0-9]+/', '_', $norm);
+        $norm = preg_replace('/_+/', '_', $norm);
+        return strtolower(trim($norm, '_'));
+    }
+
+    // Helper: Ambil detail Paket Langganan milik user berdasarkan users.active_plan
+    private function getPaketUser(int $userId): ?PaketLangganan
+    {
+        $user = User::find($userId);
+        if (!$user || empty($user->active_plan)) return null;
+        $userPlanNorm = $this->normalizePlanId((string)$user->active_plan);
+        $allPaket = PaketLangganan::where('status', 'active')->get();
+        foreach ($allPaket as $paket) {
+            if ($this->normalizePlanId((string)$paket->name) === $userPlanNorm) {
+                return $paket;
+            }
+        }
+        return null;
+    }
+
+    // Helper PRIORITAS 1: Hitung batas kuota menit AV HARIAN untuk anak tertentu (3 layer zero hardcode)
+    private function getBatasPaketKuotaAnak(int $userId, ProfilAnak $anak): int
+    {
+        if (!empty($anak->av_minutes_daily_override) && (int)$anak->av_minutes_daily_override > 0) {
+            return (int)$anak->av_minutes_daily_override;
+        }
+        $paket = $this->getPaketUser($userId);
+        if ($paket !== null) {
+            return (int)($paket->batas_menit_av_harian ?? 0);
+        }
+        return 0; // zero hardcode fallback jujur
+    }
+
     // Ambil data ringkasan dashboard untuk user tertentu — ZERO TOLERANCE: TIDAK ADA FALLBACK user_id DEFAULT
     public function index(Request $request): JsonResponse
     {
@@ -51,14 +90,22 @@ class DashboardController extends Controller
         $totalAnak = $anakQuery->count();
         $totalDevice = $totalAnak;
         $totalPerangkatOnline = (clone $anakQuery)->where('is_online', true)->count();
+
+        // ⚠️ FIX STALE COUNTER: users.children_count / devices_count TIDAK SELALU TER-UPDATE
+        // (misal user manual insert DB / belum sync dari AnakController create).
+        // JIKA nilai counter mismatch dengan COUNT actual profil_anak → AUTO-SYNC kolom users SEKARANG.
+        // (Tidak menunggu next create/delete ProfilAnak untuk update counter — agar dashboard SELALU BENAR realtime).
+        $userRow = User::find($userId);
+        if ($userRow && ((int)($userRow->children_count ?? 0) !== $totalAnak || (int)($userRow->devices_count ?? 0) !== $totalDevice)) {
+            $userRow->children_count = $totalAnak;
+            $userRow->devices_count = $totalDevice;
+            $userRow->save();
+        }
+
         $totalZona = ZonaGeofence::where('user_id', $userId)->count();
         $totalNotif = NotifikasiDiteruskan::where('user_id', $userId)->count();
         $totalNotifUnread = NotifikasiDiteruskan::where('user_id', $userId)
             ->where('is_read', false)->count();
-
-        // Estimasi usage menit berdasarkan rata-rata battery_level (indirect proxy usage real)
-        $avgBattery = (clone $anakQuery)->avg('battery_level') ?? 50;
-        $usageFactor = ((100 - $avgBattery) / 100) * 0.6 + 0.2;
 
         // Daftar perangkat untuk filter dropdown channel (dinamis)
         $daftarPerangkat = (clone $anakQuery)
@@ -75,17 +122,37 @@ class DashboardController extends Controller
                 ];
             });
 
-        // Estimasi kuota monitor terpakai (basis user active_plan limit default)
-        $user = User::find($userId);
-        $plan = $user?->active_plan ?? 'premium';
-        $planLimits = [
-            'free'       => ['video' => 30,  'audio' => 60],
-            'premium'    => ['video' => 60,  'audio' => 300],
-            'family_pro' => ['video' => 180, 'audio' => 1800],
-        ];
-        $limits = $planLimits[$plan] ?? $planLimits['premium'];
-        $videoUsedMinutes = (int) round($limits['video'] * $usageFactor * min(1, $totalDevice * 0.8));
-        $audioUsedMinutes = (int) round($limits['audio'] * $usageFactor * min(1, $totalDevice * 0.7));
+        // ⚠️ R7 FIX KRITIS: KUOTA AV TERPAKAI AMBIL DARI TABEL ASLI kuota_av_monitor_harian
+        // (BUKAN proxy battery level * usageFactor * planLimits HARDCODE LAMA YANG SALAH!)
+        $tanggalToday = Carbon::now()->toDateString();
+        $anakIds = (clone $anakQuery)->pluck('id')->all();
+
+        $audioUsedMinutes = 0;
+        $videoUsedMinutes = 0;
+        $batasMaxGabunganAllAnak = 0; // Jumlah total kuota max semua anak (untuk dashboard summary)
+
+        if (!empty($anakIds)) {
+            // 1) SUM kuota DIGUNAKAN hari ini dari tabel asli (tidak ada proxy sama sekali)
+            $sumKuota = KuotaAvMonitorHarian::whereIn('profil_anak_id', $anakIds)
+                ->where('tanggal', $tanggalToday)
+                ->selectRaw('
+                    IFNULL(SUM(digunakan_audio_menit), 0) as total_audio,
+                    IFNULL(SUM(digunakan_video_menit), 0) as total_video
+                ')
+                ->first();
+            $audioUsedMinutes = (int)($sumKuota?->total_audio ?? 0);
+            $videoUsedMinutes = (int)($sumKuota?->total_video ?? 0);
+
+            // 2) BATAS MAX per anak = SUM dari 3 layer priority (override > paket > 0)
+            //    Perhitungan per anak, tidak ambil dari kolom row kuota (bisa outdated jika user baru upgrade)
+            $anakAllRows = (clone $anakQuery)->get();
+            foreach ($anakAllRows as $anak) {
+                $batasPerAnak = $this->getBatasPaketKuotaAnak($userId, $anak);
+                // Jika batas=0 → unlimited (tidak dijumlahkan ke max summary agar user tidak bingung "max 0 tapi digunakan")
+                // Dashboard client akan interpretasi: maxGabungan = 0 → unlimited / upgrade needed
+                $batasMaxGabunganAllAnak += $batasPerAnak;
+            }
+        }
 
         // Data notifikasi terbaru
         $notifTerbaru = NotifikasiDiteruskan::where('user_id', $userId)
@@ -118,8 +185,11 @@ class DashboardController extends Controller
                     'total_notifikasi_unread' => $totalNotifUnread,
                     'video_used_minutes' => $videoUsedMinutes,
                     'audio_used_minutes' => $audioUsedMinutes,
-                    'video_max_minutes' => $limits['video'],
-                    'audio_max_minutes' => $limits['audio'],
+                    // ⚠️ R7: max = BATAS ASLI DARI PAKET (bukan hardcode free/premium/family_pro)
+                    // max_minutes = 0 jujur → frontend interpretasi unlimited / nonaktif
+                    'video_max_minutes' => $batasMaxGabunganAllAnak,
+                    'audio_max_minutes' => $batasMaxGabunganAllAnak,
+                    '_batas_gabungan_all_anak_menit' => $batasMaxGabunganAllAnak,
                     'fetched_at' => now()->toISOString(),
                 ],
                 'daftar_perangkat' => $daftarPerangkat,
