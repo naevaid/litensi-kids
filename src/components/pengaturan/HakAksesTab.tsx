@@ -24,6 +24,9 @@ interface ParentRole {
 }
 
 export const HakAksesTab: React.FC<HakAksesTabProps> = ({ showToast }) => {
+  // ZERO HARDCODE: Jumlah pengguna per role TIDAK BOLEH dihardcode seolah-olah sudah ada wali/pendamping boongan
+  // Role Utama totalUsers=1 (JUJUR: itu user master sendiri yang sedang login)
+  // Role Pendamping/Guru default=0 (belum ada undangan yang benar-benar dikirim / disimpan ke DB)
   const [roles, setRoles] = useState<ParentRole[]>([
     {
       id: 'role-1',
@@ -44,7 +47,7 @@ export const HakAksesTab: React.FC<HakAksesTabProps> = ({ showToast }) => {
       roleName: 'Pendamping / Wali (Co-Parent)',
       description: 'Dapat memantau lokasi, menambah waktu layar, dan mengirim pesan tanpa wewenang ubah PIN master.',
       isDefault: false,
-      totalUsers: 1,
+      totalUsers: 0,
       permissions: {
         canLockScreen: true,
         canGrantTime: true,
@@ -80,7 +83,14 @@ export const HakAksesTab: React.FC<HakAksesTabProps> = ({ showToast }) => {
       return;
     }
 
-    showToast(`Undangan akses telah dikirim ke ${inviteEmail}`, 'success');
+    showToast(`Undangan akses tercatat untuk ${inviteEmail}`, 'success');
+    // PERINGATAN (ZERO HONEST): Invite saat ini HANYA state lokal, BELUM ada API kirim email riil atau simpan ke DB
+    setTimeout(() => {
+      showToast(
+        '⚠️ Undangan HANYA tersimpan di session browser ini (belum ada pengiriman email riil atau penyimpanan permanen ke database user wali).',
+        'warning'
+      );
+    }, 900);
     setInviteEmail('');
     setIsInviteModalOpen(false);
   };

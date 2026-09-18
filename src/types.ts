@@ -551,6 +551,7 @@ export interface GeofenceLog {
 
 export interface SubscriptionLimits {
   maxChildrenDevices: number;
+  maxChildrenDevicesLabel: string;
   locationTracking: 'dasar' | 'realtime_7d' | 'realtime_30d_sos';
   locationTrackingLabel: string;
   appRestriction: 'terbatas_3' | 'unlimited_jadwal' | 'unlimited_ai';

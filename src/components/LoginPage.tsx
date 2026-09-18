@@ -158,20 +158,22 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate, onLoginSuccess
           </div>
         </div>
 
-        {/* Demo Alert Badge */}
-        <div className="mb-5 p-3 bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-100/60 dark:border-indigo-900/40 rounded-xl text-[11px] text-indigo-700 dark:text-indigo-300 leading-relaxed">
-          <span className="font-medium block mb-1">💡 Akun Demo Cepat (Database Real):</span>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-1 font-mono text-[11px]">
-            <span>Master Admin:</span>
-            <span className="sm:text-right">
-              <span className="select-all">admin@litensikids.id</span> / <span className="select-all">admin123</span>
-            </span>
-            <span>Orang Tua:</span>
-            <span className="sm:text-right">
-              <span className="select-all">orangtua@litensikids.id</span> / <span className="select-all">password123</span>
-            </span>
+        {!import.meta.env.PROD && (
+          // Hanya tampilkan Akun Demo Cepat di mode pengembangan (bukan production)
+          <div className="mb-5 p-3 bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-100/60 dark:border-indigo-900/40 rounded-xl text-[11px] text-indigo-700 dark:text-indigo-300 leading-relaxed">
+            <span className="font-medium block mb-1">💡 Akun Demo Cepat (Database Real):</span>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-1 font-mono text-[11px]">
+              <span>Master Admin:</span>
+              <span className="sm:text-right">
+                <span className="select-all">admin@litensikids.id</span> / <span className="select-all">admin123</span>
+              </span>
+              <span>Orang Tua:</span>
+              <span className="sm:text-right">
+                <span className="select-all">orangtua@litensikids.id</span> / <span className="select-all">password123</span>
+              </span>
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Status Alerts */}
         {error && (

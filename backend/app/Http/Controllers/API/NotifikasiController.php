@@ -12,7 +12,24 @@ class NotifikasiController extends Controller
     // Daftar notifikasi berdasarkan user
     public function index(Request $request): JsonResponse
     {
-        $userId = $request->input('user_id', 1);
+        // ZERO TOLERANCE PRIVASI: TIDAK BOLEH ADA default user_id = 1 (bocor data user lain!)
+        $userId = $request->input('user_id');
+        if (empty($userId) || !is_numeric($userId)) {
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'list' => [],
+                    'summary' => [
+                        'total' => 0,
+                        'unread' => 0,
+                        'starred' => 0,
+                        'flagged' => 0,
+                    ],
+                ],
+            ]);
+        }
+        $userId = (int) $userId;
+
         $kategori = $request->input('kategori'); // app_category filter
         $bintang = $request->boolean('starred_only', false);
         $belumDibaca = $request->boolean('unread_only', false);
@@ -114,7 +131,16 @@ class NotifikasiController extends Controller
     // Tandai semua notifikasi sebagai terbaca
     public function markAllRead(Request $request): JsonResponse
     {
-        $userId = $request->input('user_id', 1);
+        // ZERO TOLERANCE PRIVASI: TIDAK BOLEH ADA default user_id = 1 (bocor data user lain!)
+        $userId = $request->input('user_id');
+        if (empty($userId) || !is_numeric($userId)) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Tidak ada user_id yang valid',
+                'data' => ['marked_count' => 0],
+            ]);
+        }
+        $userId = (int) $userId;
 
         $affected = NotifikasiDiteruskan::where('user_id', $userId)
             ->where('is_read', false)

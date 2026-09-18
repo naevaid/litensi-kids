@@ -1,12 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Smartphone, Plus, Clock, ShieldCheck,
   CheckCircle, RefreshCw, Lock, Unlock, Trash2, Edit3,
   QrCode, Search, Wifi, WifiOff, Battery, BatteryCharging,
   Eye, X, Copy, AlertTriangle, User, Check, ArrowRight,
-  Sparkles, SmartphoneCharging, Radio, ChevronRight
+  Sparkles, SmartphoneCharging, Radio, ChevronRight, Timer
 } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 import { ChildProfile } from '../../types';
 import { AvatarPicker } from './AvatarPicker';
 import { renderAvatarIcon } from './AvatarIconSelector';
@@ -45,6 +46,10 @@ export const KelolaAnakPage: React.FC<KelolaAnakPageProps> = ({ showToast }) => 
   const [errorMsg, setErrorMsg] = useState<string>('');
 
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Timer countdown TTL kode pairing (auto expire 10 menit)
+  const [pairingSecondsLeft, setPairingSecondsLeft] = useState<number | null>(null);
+  const pairingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Add Child Modal Flow (SESUAI REQUIREMENT USER: Step 1 QR Pairing DULU → Step 2 Form Data Anak)
   const [showAddModal, setShowAddModal] = useState(false);
@@ -195,8 +200,52 @@ export const KelolaAnakPage: React.FC<KelolaAnakPageProps> = ({ showToast }) => 
     }
   };
 
+  // Helper countdown TTL kode pairing (expires_at → detik tersisa)
+  const stopPairingCountdown = () => {
+    if (pairingIntervalRef.current) {
+      clearInterval(pairingIntervalRef.current);
+      pairingIntervalRef.current = null;
+    }
+    setPairingSecondsLeft(null);
+  };
+
+  const startPairingCountdown = (expiresAtIso: string | undefined) => {
+    stopPairingCountdown();
+    if (!expiresAtIso) return;
+    const targetMs = new Date(expiresAtIso).getTime();
+    if (isNaN(targetMs)) return;
+
+    const hitungDetik = () => {
+      const sisa = Math.max(0, Math.round((targetMs - Date.now()) / 1000));
+      setPairingSecondsLeft(sisa);
+      if (sisa <= 0) {
+        stopPairingCountdown();
+        showToast('Kode pairing sudah kedaluwarsa, silakan generate ulang.', 'warning');
+      }
+    };
+    hitungDetik();
+    pairingIntervalRef.current = setInterval(hitungDetik, 1000);
+  };
+
+  // Helper format detik → MM:SS
+  const formatPairingCountdown = (secs: number | null): string => {
+    if (secs == null || isNaN(secs)) return '-';
+    const m = Math.floor(secs / 60);
+    const s = secs % 60;
+    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  };
+
+  // Cleanup otomatis: stop countdown TTL saat modal tambah anak ditutup
+  useEffect(() => {
+    if (!showAddModal) {
+      stopPairingCountdown();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showAddModal]);
+
   // Open Add Child Modal: SELALU mulai Step 1 = Pairing QR Code DULU (sesuai requirement user)
   const handleOpenAddModal = async () => {
+    stopPairingCountdown();
     setNewChildName('');
     setNewAge(8);
     setNewGender('laki-laki');
@@ -232,6 +281,7 @@ export const KelolaAnakPage: React.FC<KelolaAnakPageProps> = ({ showToast }) => 
           paired: false,
           deviceInfo: null
         });
+        startPairingCountdown(d.expires_at);
         showToast('Kode pairing berhasil dibuat. Silakan scan QR di perangkat anak.', 'info');
         // Mulai polling realtime status pairing
         startPairingPolling(d.code ?? '');
@@ -269,6 +319,7 @@ export const KelolaAnakPage: React.FC<KelolaAnakPageProps> = ({ showToast }) => 
         // BERHASIL TERHUBUNG!
         console.log('%c[Anak] ✅ Pairing SUCCESS! Perangkat terdeteksi terhubung.', 'color:#059669;font-weight:700', data.device_info);
         setPollingPairing(false);
+        stopPairingCountdown();
         setGeneratedPairing(prev => ({
           ...prev,
           paired: true,
@@ -804,42 +855,70 @@ export const KelolaAnakPage: React.FC<KelolaAnakPageProps> = ({ showToast }) => 
                   </div>
                 ) : generatedPairing.code ? (
                   <>
-                    {/* QR Code Container */}
-                    <div className="relative mx-auto w-56 h-56 bg-white p-3 rounded-2xl border-2 border-indigo-500 shadow-md flex flex-col items-center justify-center">
-                      <img
-                        src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(
-                          generatedPairing.qrPayload || JSON.stringify({
-                            t: 'litensi-pair',
-                            v: 1,
-                            c: generatedPairing.code,
-                            p: generatedPairing.pin,
-                            ts: Date.now()
-                          })
-                        )}`}
-                        alt="Pairing QR Code"
-                        className="w-44 h-44 object-contain rounded-lg"
+                    {/* QR Code Container — LOKAL via qrcode.react (BUKAN external api.qrserver.com third party!) */}
+                    <div className="relative mx-auto w-56 h-56 bg-white p-3 rounded-2xl border-2 border-indigo-500 shadow-md flex flex-col items-center justify-center overflow-hidden">
+                      <QRCodeSVG
+                        value={
+                          generatedPairing.qrPayload && String(generatedPairing.qrPayload).trim().length > 0
+                            ? generatedPairing.qrPayload
+                            : JSON.stringify({
+                                t: 'litensi-pair',
+                                v: 1,
+                                c: generatedPairing.code,
+                                p: generatedPairing.pin,
+                                u: Number(getSessionUser()?.id ?? 0),
+                                ts: Date.now()
+                              })
+                        }
+                        size={200}
+                        level="M"
+                        includeMargin={false}
+                        bgColor="#ffffff"
+                        fgColor="#4f46e5"
+                        className="w-44 h-44 rounded-lg"
                       />
                       {/* Pulse scan animation border */}
                       <div className="absolute inset-0 border-2 border-dashed border-indigo-400/50 rounded-2xl pointer-events-none animate-pulse" />
                     </div>
 
-                    {/* Status Realtime Polling */}
-                    <div className="flex items-center justify-center gap-2 text-[11px] text-slate-500 dark:text-slate-400 font-normal">
-                      {generatedPairing.paired ? (
-                        <>
-                          <CheckCircle className="w-4 h-4 text-emerald-500" />
-                          <span className="text-emerald-600 dark:text-emerald-400 font-medium">Perangkat BERHASIL TERHUBUNG ✅</span>
-                        </>
-                      ) : (
-                        <>
-                          <Radio className={`w-4 h-4 text-indigo-500 ${pollingPairing ? 'animate-pulse' : ''}`} />
+                    {/* Status Realtime Polling + TTL Countdown BERBARIS */}
+                    <div className="flex flex-col items-center justify-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400 font-normal pt-1">
+                      <div className="flex items-center justify-center gap-2">
+                        {generatedPairing.paired ? (
+                          <>
+                            <CheckCircle className="w-4 h-4 text-emerald-500" />
+                            <span className="text-emerald-600 dark:text-emerald-400 font-medium">
+                              Perangkat BERHASIL TERHUBUNG ✅
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <Radio className={`w-4 h-4 text-indigo-500 ${pollingPairing ? 'animate-pulse' : ''}`} />
+                            <span>
+                              {pollingPairing ? 'Menunggu perangkat scan QR...' : 'Siap untuk di-scan'}
+                              {pollingPairing && pairingPollCount > 0 && (
+                                <span className="text-[10px] ml-1 text-slate-400">(cek #{pairingPollCount})</span>
+                              )}
+                            </span>
+                          </>
+                        )}
+                      </div>
+
+                      {/* Countdown TTL kode pairing (10 menit) */}
+                      {!generatedPairing.paired && (pairingSecondsLeft != null) && pairingSecondsLeft > 0 && (
+                        <div className="flex items-center justify-center gap-1.5 text-[10.5px] text-slate-500 dark:text-slate-500 mt-0.5">
+                          <Timer className="w-3 h-3 text-slate-400" />
                           <span>
-                            {pollingPairing ? 'Menunggu perangkat scan QR...' : 'Siap untuk di-scan'}
-                            {pollingPairing && pairingPollCount > 0 && (
-                              <span className="text-[10px] ml-1 text-slate-400">(cek #{pairingPollCount})</span>
-                            )}
+                            Kode berlaku:{' '}
+                            <span
+                              className={`font-mono font-semibold ${
+                                pairingSecondsLeft <= 120 ? 'text-rose-600 dark:text-rose-400' : 'text-indigo-600 dark:text-indigo-400'
+                              }`}
+                            >
+                              {formatPairingCountdown(pairingSecondsLeft)}
+                            </span>
                           </span>
-                        </>
+                        </div>
                       )}
                     </div>
 
@@ -895,6 +974,21 @@ export const KelolaAnakPage: React.FC<KelolaAnakPageProps> = ({ showToast }) => 
                           )}
                         </div>
                       )}
+
+                      {/* LINK OPSIONAL FALLBACK SIMULASI (BUKAN TOMBOL UTAMA!) — HANYA UNTUK TESTING TANPA INSTALL COMPANION APP */}
+                      {!generatedPairing.paired && (
+                        <div className="pt-2 mt-1 border-t border-slate-200/70 dark:border-slate-700/80 text-center">
+                          <button
+                            type="button"
+                            onClick={handleSimulateDevicePaired}
+                            className="text-[10.5px] text-slate-500 dark:text-slate-400 font-normal hover:text-teal-600 dark:hover:text-teal-300 underline decoration-dotted decoration-teal-400/60 cursor-pointer transition-colors"
+                            title="Mode testing: simulasikan seolah-olah perangkat anak sudah scan QR & confirm PIN"
+                          >
+                            <Sparkles className="w-3 h-3 inline -mt-0.5 mr-1" />
+                            Sudah scan tapi belum terhubung? Simulasikan pairing (testing)
+                          </button>
+                        </div>
+                      )}
                     </div>
 
                     {/* Actions Bar Step 1 */}
@@ -907,31 +1001,17 @@ export const KelolaAnakPage: React.FC<KelolaAnakPageProps> = ({ showToast }) => 
                         Batal
                       </button>
 
-                      <div className="flex items-center gap-2">
-                        {/* Button simulasi pairing untuk testing UX (MVP tanpa install companion app) */}
-                        {!generatedPairing.paired && (
-                          <button
-                            type="button"
-                            onClick={handleSimulateDevicePaired}
-                            className="px-3 py-2 text-[11px] bg-teal-50 text-teal-700 dark:bg-teal-950/40 dark:text-teal-300 hover:bg-teal-100 dark:hover:bg-teal-950/70 border border-teal-200/60 dark:border-teal-800/60 rounded-xl font-medium cursor-pointer flex items-center gap-1"
-                            title="Simulasikan jika sudah scan QR (testing)"
-                          >
-                            <Sparkles className="w-3 h-3" />
-                            <span>Simulasikan Terhubung</span>
-                          </button>
-                        )}
-
-                        {/* Button ke Step 2 Form (HANYA AKTIF JIKA SUDAH PAIRED!) */}
-                        <button
-                          type="button"
-                          disabled={!generatedPairing.paired}
-                          onClick={() => setAddStep('form')}
-                          className={`px-4 py-2 text-xs rounded-xl font-normal cursor-pointer shadow-xs flex items-center gap-1.5 ${
-                            generatedPairing.paired
-                              ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                              : 'bg-slate-200 text-slate-500 dark:bg-slate-800 dark:text-slate-500 cursor-not-allowed'
-                          }`}
-                        >
+                      {/* Button ke Step 2 Form (HANYA AKTIF JIKA SUDAH PAIRED!) */}
+                      <button
+                        type="button"
+                        disabled={!generatedPairing.paired}
+                        onClick={() => setAddStep('form')}
+                        className={`px-4 py-2 text-xs rounded-xl font-normal cursor-pointer shadow-xs flex items-center gap-1.5 ${
+                          generatedPairing.paired
+                            ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                            : 'bg-slate-200 text-slate-500 dark:bg-slate-800 dark:text-slate-500 cursor-not-allowed'
+                        }`}
+                      >
                           {generatedPairing.paired ? (
                             <>
                               <CheckCircle className="w-3.5 h-3.5" />
@@ -946,11 +1026,10 @@ export const KelolaAnakPage: React.FC<KelolaAnakPageProps> = ({ showToast }) => 
                           )}
                         </button>
                       </div>
-                    </div>
-                  </>
-                ) : null}
-              </div>
-            ) : (
+                    </>
+                  ) : null}
+                </div>
+              ) : (
               /* ========================================================================= */
               /* STEP 2: FORM DATA ANAK (HANYA SETELAH PAIRED / TERHUBUNG)                 */
               /* ========================================================================= */
@@ -1284,18 +1363,22 @@ export const KelolaAnakPage: React.FC<KelolaAnakPageProps> = ({ showToast }) => 
             </div>
 
             <div className="mx-auto w-48 h-48 bg-white p-2.5 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-center">
-              <img
-                src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(
-                  JSON.stringify({
-                    app: 'LitensiKids',
-                    pairingCode: selectedQRChild.qrPairingCode || selectedQRChild.id,
-                    pin: selectedQRChild.pairingPin || '123456',
-                    childName: selectedQRChild.name,
-                    deviceName: selectedQRChild.deviceName
-                  })
-                )}`}
-                alt="QR Code Device"
-                className="w-40 h-40 object-contain rounded-lg"
+              <QRCodeSVG
+                value={JSON.stringify({
+                  app: 'LitensiKids',
+                  v: 1,
+                  pairingCode: selectedQRChild.qrPairingCode || String(selectedQRChild.id || ''),
+                  pin: selectedQRChild.pairingPin || String(selectedQRChild.id || ''),
+                  childName: selectedQRChild.name,
+                  deviceName: selectedQRChild.deviceName,
+                  ts: Date.now()
+                })}
+                size={160}
+                level="M"
+                includeMargin={false}
+                bgColor="#ffffff"
+                fgColor="#4f46e5"
+                className="w-40 h-40 rounded-lg"
               />
             </div>
 
@@ -1303,13 +1386,13 @@ export const KelolaAnakPage: React.FC<KelolaAnakPageProps> = ({ showToast }) => 
               <div className="flex justify-between items-center">
                 <span className="text-slate-400 text-[11px]">Kode Pairing:</span>
                 <span className="font-mono text-indigo-600 dark:text-indigo-400 font-medium">
-                  {selectedQRChild.qrPairingCode || 'LTN-SEC-PAIR'}
+                  {selectedQRChild.qrPairingCode || '-'}
                 </span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-slate-400 text-[11px]">PIN Hubung:</span>
                 <span className="font-mono text-slate-800 dark:text-slate-200 font-medium">
-                  {selectedQRChild.pairingPin || '681920'}
+                  {selectedQRChild.pairingPin || '-'}
                 </span>
               </div>
             </div>

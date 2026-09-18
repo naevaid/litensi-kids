@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   APIProvider,
   Map,
@@ -8,13 +8,13 @@ import {
   useMap
 } from '@vis.gl/react-google-maps';
 import {
-  MapPin, Shield, ShieldAlert, ShieldCheck, Navigation,
+  MapPin, ShieldAlert, ShieldCheck, Navigation,
   Smartphone, Battery, Compass, Radio, Layers, Maximize2,
-  ZoomIn, ZoomOut, Eye, RefreshCw, Key
+  ZoomIn, ZoomOut, Eye, RefreshCw
 } from 'lucide-react';
-import { GeofenceZone } from '../../types';
+import { GeofenceZone, GeofenceLog } from '../../types';
 
-interface ChildLocation {
+interface MarkerChild {
   id: string;
   name: string;
   device: string;
@@ -33,9 +33,33 @@ interface GoogleMapsGeofenceViewProps {
   selectedZone: GeofenceZone | null;
   onSelectZone: (zone: GeofenceZone) => void;
   showToast: (msg: string, type?: 'success' | 'error' | 'warning' | 'info') => void;
+  markerChildren?: MarkerChild[];
+  onRequestSimulateTesting?: () => void;
 }
 
-// Inner component to render Google Maps Circle overlays
+const COLOR_PALETTE_MARKER = [
+  '#10b981',
+  '#3b82f6',
+  '#8b5cf6',
+  '#ec4899',
+  '#f59e0b',
+  '#ef4444',
+];
+
+const getInitialFromName = (name: string) => {
+  const n = String(name || 'A').trim();
+  return n.charAt(0).toUpperCase() || 'A';
+};
+
+const extractKotaFromAlamat = (addr: string | null | undefined): string => {
+  if (!addr) return 'Indonesia';
+  const arr = String(addr).split(',').map(s => s.trim()).filter(Boolean);
+  if (arr.length === 0) return 'Indonesia';
+  const candidates = arr.filter(seg => !/^\d/.test(seg) && seg.length >= 3 && seg.length <= 30);
+  if (candidates.length > 0) return candidates[Math.min(1, candidates.length - 1)] || 'Indonesia';
+  return 'Indonesia';
+};
+
 const GeofenceCircles: React.FC<{
   zones: GeofenceZone[];
   selectedZone: GeofenceZone | null;
@@ -47,7 +71,6 @@ const GeofenceCircles: React.FC<{
   useEffect(() => {
     if (!map) return;
 
-    // Clean up previous circles
     Object.values(circlesRef.current).forEach((circle: google.maps.Circle) => {
       if (circle && typeof circle.setMap === 'function') {
         circle.setMap(null);
@@ -90,7 +113,6 @@ const GeofenceCircles: React.FC<{
   return null;
 };
 
-// Inner component for auto-focusing / camera controls
 const MapController: React.FC<{
   targetLocation: { lat: number; lng: number; zoom?: number } | null;
 }> = ({ targetLocation }) => {
@@ -111,41 +133,50 @@ export const GoogleMapsGeofenceView: React.FC<GoogleMapsGeofenceViewProps> = ({
   zones,
   selectedZone,
   onSelectZone,
-  showToast
+  showToast,
+  markerChildren = [],
+  onRequestSimulateTesting,
 }) => {
   const apiKey = ((import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY as string) || '';
-  const mapId = ((import.meta as any).env?.VITE_GOOGLE_MAPS_MAP_ID as string) || 'DEMO_MAP_ID';
+  const mapId = ((import.meta as any).env?.VITE_GOOGLE_MAPS_MAP_ID as string) || '';
 
-  const defaultCenter = { lat: -6.2445, lng: 106.8040 }; // Kebayoran Baru, Jakarta Selatan
-
-  const [childrenLocations, setChildrenLocations] = useState<ChildLocation[]>([
-    {
-      id: 'child-1',
-      name: 'Rayhan',
-      device: 'Xiaomi Redmi 10',
-      lat: -6.2415,
-      lng: 106.8001,
-      battery: '84%',
-      accuracy: '±5m',
-      status: 'Dalam Zona Aman',
-      zone: 'Rumah Utama (Safe Zone)',
-      color: '#10b981',
-      avatar: 'R'
-    },
-    {
-      id: 'child-2',
-      name: 'Nadia',
-      device: 'Samsung Tab A8',
-      lat: -6.2490,
-      lng: 106.8055,
-      battery: '92%',
-      accuracy: '±4m',
-      status: 'Di Sekolah',
-      zone: 'SD Bintang Kejora (Sekolah)',
-      color: '#3b82f6',
-      avatar: 'N'
+  // ZERO HARDCODE: defaultCenter TIDAK BOLEH Jakarta.
+  // Jika punya zona → hitung rata-rata semua zona user. Jika tidak ada → Tengah Indonesia.
+  const defaultCenter = useMemo(() => {
+    if (zones && zones.length > 0) {
+      const sumLat = zones.reduce((acc, z) => acc + (Number(z.latitude) || 0), 0);
+      const sumLng = zones.reduce((acc, z) => acc + (Number(z.longitude) || 0), 0);
+      return { lat: sumLat / zones.length, lng: sumLng / zones.length };
     }
-  ]);
+    return { lat: -2.5, lng: 118 };
+  }, [zones]);
+
+  const defaultZoom = useMemo(() => {
+    if (zones && zones.length > 0) return 14;
+    return 5;
+  }, [zones]);
+
+  const lokasiMapLabel = useMemo(() => {
+    if (zones && zones.length > 0 && zones[0].address) return extractKotaFromAlamat(zones[0].address);
+    return 'Indonesia';
+  }, [zones]);
+
+  const perangkatAktifLabel = useMemo(() => {
+    const n = (markerChildren || []).length;
+    if (n === 0) return 'Tidak ada perangkat terdata';
+    return `${n} Perangkat Terdata`;
+  }, [markerChildren]);
+
+  const markers = useMemo<MarkerChild[]>(() => {
+    return (markerChildren || []).map((m, idx) => {
+      if (m.color) return m;
+      return {
+        ...m,
+        color: COLOR_PALETTE_MARKER[idx % COLOR_PALETTE_MARKER.length],
+        avatar: m.avatar || getInitialFromName(m.name),
+      };
+    });
+  }, [markerChildren]);
 
   const [activeMarkerInfo, setActiveMarkerInfo] = useState<{
     type: 'child' | 'zone';
@@ -159,29 +190,8 @@ export const GoogleMapsGeofenceView: React.FC<GoogleMapsGeofenceViewProps> = ({
   } | null>(null);
 
   const [mapTypeId, setMapTypeId] = useState<'roadmap' | 'satellite' | 'terrain' | 'hybrid'>('roadmap');
-  const [isSimulatingMove, setIsSimulatingMove] = useState(false);
 
-  // Live location simulation
-  const handleSimulateGPSMove = () => {
-    setIsSimulatingMove(true);
-    setTimeout(() => {
-      setChildrenLocations(prev =>
-        prev.map(c => {
-          const deltaLat = (Math.random() - 0.5) * 0.0008;
-          const deltaLng = (Math.random() - 0.5) * 0.0008;
-          return {
-            ...c,
-            lat: Number((c.lat + deltaLat).toFixed(6)),
-            lng: Number((c.lng + deltaLng).toFixed(6))
-          };
-        })
-      );
-      setIsSimulatingMove(false);
-      showToast('Posisi GPS perangkat anak diperbarui secara real-time melalui satelit', 'success');
-    }, 450);
-  };
-
-  const handleCenterOnChild = (child: ChildLocation) => {
+  const handleCenterOnChild = (child: MarkerChild) => {
     setTargetCamera({ lat: child.lat, lng: child.lng, zoom: 17 });
     setActiveMarkerInfo({ type: 'child', data: child });
     showToast(`Peta difokuskan ke posisi ${child.name}`, 'info');
@@ -195,8 +205,16 @@ export const GoogleMapsGeofenceView: React.FC<GoogleMapsGeofenceViewProps> = ({
   };
 
   const handleFitAll = () => {
-    setTargetCamera({ lat: defaultCenter.lat, lng: defaultCenter.lng, zoom: 14 });
+    setTargetCamera({ lat: defaultCenter.lat, lng: defaultCenter.lng, zoom: defaultZoom });
     setActiveMarkerInfo(null);
+  };
+
+  const handleSimulateClick = () => {
+    if (typeof onRequestSimulateTesting === 'function') {
+      onRequestSimulateTesting();
+    } else {
+      showToast('Fitur simulasi testing membutuhkan Android Companion App real', 'info');
+    }
   };
 
   return (
@@ -207,26 +225,24 @@ export const GoogleMapsGeofenceView: React.FC<GoogleMapsGeofenceViewProps> = ({
       >
         <Map
           defaultCenter={defaultCenter}
-          defaultZoom={15}
-          mapId={mapId}
+          defaultZoom={defaultZoom}
+          mapId={mapId || undefined}
           mapTypeId={mapTypeId}
           gestureHandling="greedy"
           disableDefaultUI={false}
           className="w-full h-full"
-          internalUsageAttributionIds={['gmp_mcp_codeassist_v1_aistudio']}
+          internalUsageAttributionIds={mapId ? ['litensi-geofence-parent-v1'] : undefined}
         >
-          {/* Geofence Circles */}
           <GeofenceCircles
             zones={zones}
             selectedZone={selectedZone}
             onSelectZone={handleCenterOnZone}
           />
 
-          {/* Camera Controller */}
           <MapController targetLocation={targetCamera} />
 
-          {/* Advanced Markers for Children */}
-          {childrenLocations.map(child => (
+          {/* MARKER ANAK DINAMIS DARI PROPS (TIDAK ADA HARDCODE RAYHAN/NADIA) */}
+          {markers.map(child => (
             <AdvancedMarker
               key={child.id}
               position={{ lat: child.lat, lng: child.lng }}
@@ -235,10 +251,10 @@ export const GoogleMapsGeofenceView: React.FC<GoogleMapsGeofenceViewProps> = ({
             >
               <div className="relative flex flex-col items-center cursor-pointer group">
                 <div
-                  className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-medium shadow-lg border-2 border-white ring-2 ring-emerald-500/50 transition-transform group-hover:scale-110"
-                  style={{ backgroundColor: child.color }}
+                  className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-medium shadow-lg border-2 border-white transition-transform group-hover:scale-110"
+                  style={{ backgroundColor: child.color, boxShadow: `0 0 0 2px ${child.color}33` }}
                 >
-                  {child.avatar}
+                  {child.avatar || getInitialFromName(child.name)}
                 </div>
                 <div
                   className="absolute -inset-1 rounded-full animate-ping opacity-60 pointer-events-none"
@@ -251,7 +267,7 @@ export const GoogleMapsGeofenceView: React.FC<GoogleMapsGeofenceViewProps> = ({
             </AdvancedMarker>
           ))}
 
-          {/* Zone Center Markers */}
+          {/* ZONE CENTER MARKERS (DINAMIS DARI ZONES DB) */}
           {zones.map(zone => (
             <AdvancedMarker
               key={zone.id}
@@ -268,7 +284,6 @@ export const GoogleMapsGeofenceView: React.FC<GoogleMapsGeofenceViewProps> = ({
             </AdvancedMarker>
           ))}
 
-          {/* Active InfoWindow for Child */}
           {activeMarkerInfo?.type === 'child' && (
             <InfoWindow
               position={{
@@ -296,31 +311,30 @@ export const GoogleMapsGeofenceView: React.FC<GoogleMapsGeofenceViewProps> = ({
                 <div className="text-[11px] font-normal text-slate-600 space-y-1">
                   <div className="flex items-center justify-between">
                     <span>Status Lokasi:</span>
-                    <span className="font-medium text-emerald-700">
-                      {activeMarkerInfo.data.status}
+                    <span className="font-medium text-slate-700">
+                      {activeMarkerInfo.data.status || 'Data lokasi belum ada'}
                     </span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span>Zona:</span>
-                    <span className="font-medium">{activeMarkerInfo.data.zone}</span>
+                    <span className="font-medium">{activeMarkerInfo.data.zone || '-'}</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span>Baterai:</span>
-                    <span className="font-medium">{activeMarkerInfo.data.battery}</span>
+                    <span className="font-medium">{activeMarkerInfo.data.battery || '-'}</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span>Akurasi GPS:</span>
-                    <span className="font-medium">{activeMarkerInfo.data.accuracy}</span>
+                    <span className="font-medium">{activeMarkerInfo.data.accuracy || '-'}</span>
                   </div>
                   <div className="text-[10px] text-slate-400 pt-1">
-                    Koordinat: {activeMarkerInfo.data.lat.toFixed(5)}, {activeMarkerInfo.data.lng.toFixed(5)}
+                    Koordinat: {Number(activeMarkerInfo.data.lat).toFixed(5)}, {Number(activeMarkerInfo.data.lng).toFixed(5)}
                   </div>
                 </div>
               </div>
             </InfoWindow>
           )}
 
-          {/* Active InfoWindow for Zone */}
           {activeMarkerInfo?.type === 'zone' && (
             <InfoWindow
               position={{
@@ -340,19 +354,19 @@ export const GoogleMapsGeofenceView: React.FC<GoogleMapsGeofenceViewProps> = ({
                   </span>
                 </div>
                 <div className="text-[11px] font-normal text-slate-600 space-y-1">
-                  <p className="text-slate-500">{activeMarkerInfo.data.address}</p>
+                  <p className="text-slate-500">{activeMarkerInfo.data.address || '-'}</p>
                   <div className="flex items-center justify-between">
                     <span>Radius Geofence:</span>
                     <span className="font-medium">{activeMarkerInfo.data.radiusMeters} Meter</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span>Anak Terdaftar:</span>
-                    <span className="font-medium">{activeMarkerInfo.data.assignedChildren.join(', ')}</span>
+                    <span className="font-medium">{Array.isArray(activeMarkerInfo.data.assignedChildren) ? activeMarkerInfo.data.assignedChildren.join(', ') : '-'}</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span>Status:</span>
-                    <span className="font-medium text-emerald-700">
-                      {activeMarkerInfo.data.status === 'active' ? 'Aktif Beroperasi' : 'Non-aktif'}
+                    <span className={`font-medium ${activeMarkerInfo.data.status === 'active' ? 'text-emerald-700' : 'text-slate-500'}`}>
+                      {activeMarkerInfo.data.status === 'active' ? 'Aktif Beroperasi' : (activeMarkerInfo.data.status === 'inactive' ? 'Non-aktif' : 'Status tidak terdefinisi')}
                     </span>
                   </div>
                 </div>
@@ -364,41 +378,34 @@ export const GoogleMapsGeofenceView: React.FC<GoogleMapsGeofenceViewProps> = ({
 
       {/* Top Floating Map Controls Bar */}
       <div className="absolute top-3 left-3 right-3 flex flex-wrap items-center justify-between gap-2 pointer-events-none z-10">
-        {/* Left Badge: Live Radar Status */}
+        {/* Left Badge: Live Radar Status — DINAMIS */}
         <div className="flex items-center gap-2 bg-slate-900/90 backdrop-blur-md px-3 py-1.5 rounded-xl border border-slate-700/80 shadow-md text-white pointer-events-auto">
-          <Radio className="w-4 h-4 text-emerald-400 animate-pulse" />
+          <Radio className={`w-4 h-4 ${markers.length > 0 ? 'text-emerald-400 animate-pulse' : 'text-slate-400'}`} />
           <div className="text-xs font-normal">
             <span>Google Maps GPS: </span>
-            <span className="font-medium text-emerald-400">2 Perangkat Aktif</span>
+            <span className={`font-medium ${markers.length > 0 ? 'text-emerald-400' : 'text-slate-400'}`}>{perangkatAktifLabel}</span>
           </div>
           <span className="text-slate-500">|</span>
           <div className="text-[11px] font-normal text-slate-300 flex items-center gap-1">
             <Compass className="w-3 h-3 text-indigo-400" />
-            <span>Jakarta Selatan</span>
+            <span>{lokasiMapLabel}</span>
           </div>
         </div>
 
-        {/* Right Action Quick Filters */}
+        {/* Right Action Quick Filters — DINAMIS DARI MARKER CHILDREN BUKAN INDEX LITERAL 0/1 */}
         <div className="flex items-center gap-1.5 bg-slate-900/90 backdrop-blur-md p-1 rounded-xl border border-slate-700/80 shadow-md pointer-events-auto">
-          <button
-            type="button"
-            onClick={() => handleCenterOnChild(childrenLocations[0])}
-            className="px-2.5 py-1 text-xs font-medium text-slate-200 hover:text-white hover:bg-slate-800 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
-            title="Fokus ke Rayhan"
-          >
-            <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-            <span>Rayhan</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => handleCenterOnChild(childrenLocations[1])}
-            className="px-2.5 py-1 text-xs font-medium text-slate-200 hover:text-white hover:bg-slate-800 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
-            title="Fokus ke Nadia"
-          >
-            <span className="w-2 h-2 rounded-full bg-blue-500"></span>
-            <span>Nadia</span>
-          </button>
+          {markers.slice(0, 3).map(child => (
+            <button
+              key={`focus-anak-${child.id}`}
+              type="button"
+              onClick={() => handleCenterOnChild(child)}
+              className="px-2.5 py-1 text-xs font-medium text-slate-200 hover:text-white hover:bg-slate-800 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+              title={`Fokus ke ${child.name}`}
+            >
+              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: child.color }}></span>
+              <span className="truncate max-w-[72px]">{child.name}</span>
+            </button>
+          ))}
 
           <button
             type="button"
@@ -427,16 +434,17 @@ export const GoogleMapsGeofenceView: React.FC<GoogleMapsGeofenceViewProps> = ({
             <span>{mapTypeId === 'hybrid' ? 'Satelit' : 'Peta'}</span>
           </button>
 
-          <button
-            type="button"
-            onClick={handleSimulateGPSMove}
-            disabled={isSimulatingMove}
-            className="px-2.5 py-1 text-xs font-medium text-emerald-300 hover:bg-emerald-950/60 rounded-lg transition-colors flex items-center gap-1 cursor-pointer disabled:opacity-50"
-            title="Simulasikan pergerakan posisi anak di Google Maps"
-          >
-            <RefreshCw className={`w-3 h-3 ${isSimulatingMove ? 'animate-spin' : ''}`} />
-            <span>Update Posisi</span>
-          </button>
+          {/* HAPUS TOMBOL UPDATE POSISI PALSU → DEMOTE JADI LINK TEXT KECIL SAJA (fallback testing) */}
+          {typeof onRequestSimulateTesting === 'function' && (
+            <button
+              type="button"
+              onClick={handleSimulateClick}
+              className="px-2.5 py-1 text-[11px] font-normal text-slate-400 hover:text-emerald-300 hover:bg-slate-800/40 rounded-lg transition-colors cursor-pointer underline decoration-dotted decoration-slate-500 hover:decoration-emerald-400"
+              title="Fallback testing tanpa Android Companion App. JANGAN dipakai production."
+            >
+              Simulasikan posisi (testing)
+            </button>
+          )}
         </div>
       </div>
 

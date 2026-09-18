@@ -1,0 +1,68 @@
+{
+  "project_info": {
+    "project_number": "253925962031",
+    "project_id": "litensi-kids",
+    "storage_bucket": "litensi-kids.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:253925962031:android:95ee4e2aa5ce34839db1da",
+        "android_client_info": {
+          "package_name": "com.parental.litensikids"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "253925962031-mrlmml2krad6tmr6n5nptpbut2d07ktf.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCsrGPqs3_IYpZYh-qwp7pFRwB14Afxzfc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "253925962031-mrlmml2krad6tmr6n5nptpbut2d07ktf.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:253925962031:android:82475f7da5bbb7649db1da",
+        "android_client_info": {
+          "package_name": "com.parental.litensiparent"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "253925962031-mrlmml2krad6tmr6n5nptpbut2d07ktf.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCsrGPqs3_IYpZYh-qwp7pFRwB14Afxzfc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "253925962031-mrlmml2krad6tmr6n5nptpbut2d07ktf.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -14,7 +14,15 @@ class AnakController extends Controller
     // Daftar semua profil anak berdasarkan user
     public function index(Request $request): JsonResponse
     {
-        $userId = $request->input('user_id', 1);
+        // ZERO TOLERANCE PRIVASI: TIDAK BOLEH ADA default user_id = 1 (bocor data user lain!)
+        $userId = $request->input('user_id');
+        if (empty($userId) || !is_numeric($userId)) {
+            return response()->json([
+                'success' => true,
+                'data' => [],
+            ]);
+        }
+        $userId = (int) $userId;
 
         $anak = ProfilAnak::where('user_id', $userId)
             ->with('user')
@@ -130,6 +138,103 @@ class AnakController extends Controller
                 'device_info' => $pairing['device_info'],
                 'paired_at' => $pairing['paired_at'] ?? null,
                 'expired' => false,
+            ],
+        ]);
+    }
+
+    // Konfirmasi pairing dari perangkat anak (Android Companion App) setelah scan QR
+    // Step 2 flow pairing: Android kirim code + pin + device info, backend mark cache paired=true & update ProfilAnak
+    public function confirmPairing(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'code' => 'required|string|max:50',
+            'pin' => 'required|string|max:10',
+            'device_id' => 'nullable|string|max:100',
+            'nama_perangkat' => 'nullable|string|max:255',
+            'model' => 'nullable|string|max:255',
+            'os_version' => 'nullable|string|max:50',
+            'app_version' => 'nullable|string|max:50',
+            'battery' => 'nullable|integer|min:0|max:100',
+            'fcm_token' => 'nullable|string|max:255',
+        ]);
+
+        $code = $validated['code'];
+        $cacheKey = "pairing:{$code}";
+        $pairing = Cache::get($cacheKey);
+
+        if (!$pairing) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Kode pairing tidak ditemukan atau sudah kedaluwarsa',
+                'data' => ['code' => $code, 'expired' => true],
+            ], 404);
+        }
+
+        if ($pairing['pin'] !== $validated['pin']) {
+            return response()->json([
+                'success' => false,
+                'message' => 'PIN pairing tidak sesuai',
+                'data' => ['code' => $code],
+            ], 422);
+        }
+
+        if ($pairing['paired']) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Kode pairing ini sudah digunakan oleh perangkat lain',
+                'data' => ['code' => $code, 'device_info' => $pairing['device_info']],
+            ], 409);
+        }
+
+        $deviceInfo = [
+            'nama_perangkat' => $validated['nama_perangkat'] ?? ($validated['model'] ?? 'Perangkat Android'),
+            'model' => $validated['model'] ?? null,
+            'os' => $validated['os_version'] ?? 'Android',
+            'versi_app' => $validated['app_version'] ?? 'Litensi Kids Companion v1.0',
+            'battery' => $validated['battery'] ?? 0,
+            'mac_address' => $validated['device_id'] ? substr(md5($validated['device_id']), 0, 12) : substr(md5($code), 0, 12),
+            'fcm_token' => $validated['fcm_token'] ?? null,
+        ];
+
+        $pairing['paired'] = true;
+        $pairing['device_info'] = $deviceInfo;
+        $pairing['paired_at'] = now()->toISOString();
+        Cache::put($cacheKey, $pairing, 600);
+
+        $userId = $pairing['user_id'] ?? null;
+        $profilAnak = null;
+
+        if ($userId) {
+            $profilAnak = ProfilAnak::where('user_id', $userId)
+                ->where('qr_pairing_code', $code)
+                ->first();
+
+            if ($profilAnak) {
+                $profilAnak->update([
+                    'pairing_pin' => $validated['pin'],
+                    'device_name' => $deviceInfo['nama_perangkat'],
+                    'device_model' => $deviceInfo['model'],
+                    'os_version' => $deviceInfo['os'],
+                    'battery_level' => $deviceInfo['battery'],
+                    'is_online' => true,
+                    'paired_at' => now(),
+                    'last_active' => now(),
+                ]);
+                $profilAnak = $profilAnak->fresh()->load('user');
+            }
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Pairing perangkat berhasil',
+            'data' => [
+                'code' => $code,
+                'paired' => true,
+                'paired_at' => $pairing['paired_at'],
+                'device_info' => $deviceInfo,
+                'user_id' => $userId,
+                'profil_anak' => $profilAnak,
+                'expires_at' => now()->addMinutes(10)->toISOString(),
             ],
         ]);
     }

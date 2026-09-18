@@ -7,19 +7,41 @@ import {
 } from 'lucide-react';
 import { ForwardedNotification } from '../../types';
 import { Pagination } from '../common/Pagination';
-import { api } from '../../lib/apiClient';
+import { api, getSessionUser } from '../../lib/apiClient';
 
 interface RiwayatNotifikasiPageProps {
   showToast: (msg: string, type?: 'success' | 'error' | 'warning' | 'info') => void;
 }
 
-const INITIAL_KEYWORDS = [
-  { id: 'kw-1', word: 'OTP / Kode Rahasia', level: 'danger', category: 'Keuangan' },
-  { id: 'kw-2', word: 'Robux / Diamond Gratis', level: 'warning', category: 'Game & Phishing' },
-  { id: 'kw-3', word: 'Kirim Foto / Video', level: 'danger', category: 'Privasi & Keselamatan' },
-  { id: 'kw-4', word: 'Ketemuan di Luar', level: 'danger', category: 'Keselamatan Fisik' },
-  { id: 'kw-5', word: 'Nomor Rekening / Transfer', level: 'warning', category: 'Finansial' }
-];
+// Interface untuk daftar anak dari API /anak (untuk dropdown filter)
+interface ChildOptionItem {
+  id: string;
+  nama_lengkap: string;
+  nama_panggilan: string;
+  device_model: string | null;
+  os_version: string | null;
+  label: string;
+}
+
+// Helper mapping response API /anak ke ChildOptionItem
+const mapApiAnakToChildOption = (db: any): ChildOptionItem | null => {
+  if (!db) return null;
+  const id = String(db.id ?? '');
+  const namaLengkap = String(db.nama_lengkap ?? '').trim();
+  const namaPanggilan = String(db.nama_panggilan ?? '').trim();
+  const deviceModel = db.device_model ? String(db.device_model) : null;
+  const osVersion = db.os_version ? String(db.os_version) : null;
+  const displayName = namaPanggilan || namaLengkap || `Anak #${id}`;
+  const deviceStr = deviceModel ? deviceModel : (osVersion ? `Android ${osVersion}` : 'Perangkat');
+  return {
+    id,
+    nama_lengkap: namaLengkap,
+    nama_panggilan: namaPanggilan,
+    device_model: deviceModel,
+    os_version: osVersion,
+    label: `${displayName} (${deviceStr})`,
+  };
+};
 
 // Helper format timestamp relatif Indonesia dari string datetime
 const formatTimestampRelatif = (isoStr: string): string => {
@@ -72,16 +94,21 @@ const mapDbNotifikasiToInterface = (dbRow: any): ForwardedNotification => {
 };
 
 export const RiwayatNotifikasiPage: React.FC<RiwayatNotifikasiPageProps> = ({ showToast }) => {
+  const sessUser = getSessionUser();
+  const uid = sessUser?.id ? String(sessUser.id) : '';
+
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [notifications, setNotifications] = useState<ForwardedNotification[]>([]);
-  const [keywords, setKeywords] = useState(INITIAL_KEYWORDS);
+  // ZERO HARDCODE: initial keywords KOSONG JUJUR (bukan 5 literal)
+  const [keywords, setKeywords] = useState<Array<{ id: string; word: string; level: 'warning' | 'danger'; category: string }>>([]);
+  const [children, setChildren] = useState<ChildOptionItem[]>([]);
   const [activeSubTab, setActiveSubTab] = useState<'semua' | 'kata_kunci'>('semua');
 
   // Filters
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedChild, setSelectedChild] = useState<'all' | 'Rayhan' | 'Nadia'>('all');
+  const [selectedChild, setSelectedChild] = useState<string>('all');
   const [selectedApp, setSelectedApp] = useState<string>('all');
   const [selectedStatus, setSelectedStatus] = useState<'all' | 'unread' | 'flagged' | 'starred'>('all');
 
@@ -98,16 +125,36 @@ export const RiwayatNotifikasiPage: React.FC<RiwayatNotifikasiPageProps> = ({ sh
   const [newKeywordLevel, setNewKeywordLevel] = useState<'warning' | 'danger'>('danger');
   const [newKeywordCategory, setNewKeywordCategory] = useState('Privasi & Keamanan');
 
-  // Load data notifikasi real dari API
+  // Load data notifikasi real dari API + daftar anak untuk dropdown filter
   const loadData = async () => {
-    console.groupCollapsed('%c[Notifikasi] loadData GET /notifikasi', 'color:#ec4899;font-weight:700');
+    console.groupCollapsed('%c[Notifikasi] loadData GET /notifikasi + GET /anak', 'color:#ec4899;font-weight:700');
     try {
       setLoading(true);
       setErrorMsg(null);
-      const res = await api.get('/notifikasi');
-      console.debug('[Notifikasi] raw response (res.data SUDAH di-unwrap apiClient 1x):', res);
-      // apiClient line 201 otomatis unwrap data → res.data = {list, summary} BUKAN {success, data:{list, summary}}
-      const payload = res.data ?? {};
+
+      // Parallel call: notifikasi + daftar anak (keduanya difilter user_id session)
+      const [resNotif, resAnak] = await Promise.all([
+        uid
+          ? api.get('/notifikasi', { params: { user_id: uid, limit: 100 } })
+          : Promise.resolve({ ok: true, data: { list: [], summary: {} } } as any),
+        uid
+          ? api.get('/anak', { params: { user_id: uid } })
+          : Promise.resolve({ ok: true, data: [] } as any),
+      ]);
+
+      // --- Process Anak List ---
+      const anakRawArray: any[] = Array.isArray(resAnak?.data)
+        ? resAnak.data
+        : (resAnak?.data?.list ?? resAnak?.data?.data ?? []);
+      const listAnak = anakRawArray
+        .map(mapApiAnakToChildOption)
+        .filter(Boolean) as ChildOptionItem[];
+      setChildren(listAnak);
+      console.debug('[Notifikasi] daftar anak from API:', listAnak.length, 'raw rows:', anakRawArray.length);
+
+      // --- Process Notifikasi List ---
+      console.debug('[Notifikasi] raw response (res.data SUDAH di-unwrap apiClient 1x):', resNotif);
+      const payload = resNotif?.data ?? {};
       const list: any[] = payload?.list ?? [];
       const summary: any = payload?.summary ?? {};
       console.debug('[Notifikasi] DB rows (payload.list):', list.length, 'summary:', summary);
@@ -174,10 +221,12 @@ export const RiwayatNotifikasiPage: React.FC<RiwayatNotifikasiPageProps> = ({ sh
     console.groupCollapsed('%c[Notifikasi] handleMarkAllAsRead POST /notifikasi/mark-all-read', 'color:#ec4899;font-weight:700');
     try {
       setIsSaving(true);
-      const res = await api.post('/notifikasi/mark-all-read', {});
+      // PRIVASI: WAJIB kirim user_id session agar backend TIDAK fallback ke admin ID 1
+      const body = uid ? { user_id: uid } : {};
+      const res = await api.post('/notifikasi/mark-all-read', body);
       // res.data SUDAH di-unwrap apiClient → res.data = {marked_count} BUKAN {data:{marked_count}}
       const markedCount = res?.data?.marked_count ?? 0;
-      console.debug('[Notifikasi] markedCount:', markedCount, 'raw res.data:', res?.data);
+      console.debug('[Notifikasi] markedCount:', markedCount, 'raw res.data:', res?.data, 'body:', body);
       showToast(`Berhasil menandai ${markedCount} notifikasi sebagai dibaca`, 'success');
       await loadData();
     } catch (err: any) {
@@ -222,6 +271,13 @@ export const RiwayatNotifikasiPage: React.FC<RiwayatNotifikasiPageProps> = ({ sh
 
     setKeywords(prev => [newKw, ...prev]);
     showToast(`Kata kunci sensitif "${newKeywordWord}" berhasil ditambahkan ke pengawasan`, 'success');
+    // PERINGATAN: CRUD kata kunci saat ini hanya state lokal, refresh halaman = data HILANG
+    setTimeout(() => {
+      showToast(
+        '⚠️ Kata kunci tersimpan HANYA di session browser saat ini. Data akan hilang jika refresh halaman/ganti device (butuh endpoint API backend untuk penyimpanan permanen per user).',
+        'warning'
+      );
+    }, 900);
     setNewKeywordWord('');
     setIsAddKeywordModalOpen(false);
   };
@@ -229,6 +285,13 @@ export const RiwayatNotifikasiPage: React.FC<RiwayatNotifikasiPageProps> = ({ sh
   const handleDeleteKeyword = (id: string, word: string) => {
     setKeywords(prev => prev.filter(k => k.id !== id));
     showToast(`Kata kunci "${word}" dihapus dari pengawasan`, 'info');
+    // PERINGATAN: CRUD kata kunci saat ini hanya state lokal
+    setTimeout(() => {
+      showToast(
+        '⚠️ Perubahan kata kunci HANYA berlaku di session browser ini (belum tersimpan permanen ke database).',
+        'warning'
+      );
+    }, 700);
   };
 
   // Filtered Notifications
@@ -384,7 +447,7 @@ export const RiwayatNotifikasiPage: React.FC<RiwayatNotifikasiPageProps> = ({ sh
             className="px-3 py-2 text-xs font-medium bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl shadow-xs transition-colors flex items-center gap-1.5 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
           >
             <Plus className="w-3.5 h-3.5" />
-            <span>+ Pantau Kata Kunci</span>
+            <span>Pantau Kata Kunci</span>
           </button>
         </div>
       </div>
@@ -505,14 +568,21 @@ export const RiwayatNotifikasiPage: React.FC<RiwayatNotifikasiPageProps> = ({ sh
               <select
                 value={selectedChild}
                 onChange={(e) => {
-                  setSelectedChild(e.target.value as any);
+                  setSelectedChild(e.target.value);
                   setCurrentPage(1);
                 }}
                 className="px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-normal text-slate-700 dark:text-slate-300 focus:outline-hidden"
               >
                 <option value="all">Semua Anak</option>
-                <option value="Rayhan">Rayhan (Xiaomi Redmi 10)</option>
-                <option value="Nadia">Nadia (Tablet Samsung Tab A8)</option>
+                {children.length === 0 ? (
+                  <option value="" disabled>Belum ada daftar anak (pairing perangkat terlebih dahulu)</option>
+                ) : (
+                  children.map(anak => (
+                    <option key={anak.id} value={anak.nama_panggilan || anak.nama_lengkap}>
+                      {anak.label}
+                    </option>
+                  ))
+                )}
               </select>
 
               <select
@@ -682,41 +752,62 @@ export const RiwayatNotifikasiPage: React.FC<RiwayatNotifikasiPageProps> = ({ sh
               </button>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
-              {keywords.map(kw => (
-                <div
-                  key={kw.id}
-                  className="p-3 bg-slate-50 dark:bg-slate-900/60 rounded-xl border border-slate-200/60 dark:border-slate-700/60 flex items-center justify-between gap-2"
+            {keywords.length === 0 ? (
+              // ZERO HARDCODE: EMPTY STATE JUJUR ketika user BELUM menambahkan kata kunci apapun
+              <div className="mt-3 p-8 rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/30 text-center">
+                <ShieldAlert className="w-10 h-10 mx-auto text-slate-300 dark:text-slate-600 mb-2 opacity-70" />
+                <p className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
+                  Belum ada kata kunci sensitif dalam pengawasan
+                </p>
+                <p className="text-[11px] font-normal text-slate-400 dark:text-slate-500 mb-3 max-w-sm mx-auto">
+                  Tap tombol <span className="font-semibold text-indigo-600 dark:text-indigo-400">+ Tambah Kata Kunci</span> untuk memulai memantau frasa berbahaya (seperti OTP, kirim foto, ajakan ketemuan, dll).
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setIsAddKeywordModalOpen(true)}
+                  className="px-3 py-1.5 text-[11px] font-medium bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg transition-colors flex items-center gap-1 mx-auto cursor-pointer"
                 >
-                  <div className="space-y-0.5">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-medium text-slate-900 dark:text-white">
-                        "{kw.word}"
-                      </span>
-                      <span className={`px-1.5 py-0.2 rounded-md text-[10px] font-medium ${
-                        kw.level === 'danger'
-                          ? 'bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300'
-                          : 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300'
-                      }`}>
-                        {kw.level === 'danger' ? 'Bahaya Tinggi' : 'Waspada'}
+                  <Plus className="w-3 h-3" />
+                  <span>Tambah Kata Kunci Pertama</span>
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+                {keywords.map(kw => (
+                  <div
+                    key={kw.id}
+                    className="p-3 bg-slate-50 dark:bg-slate-900/60 rounded-xl border border-slate-200/60 dark:border-slate-700/60 flex items-center justify-between gap-2"
+                  >
+                    <div className="space-y-0.5">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-medium text-slate-900 dark:text-white">
+                          "{kw.word}"
+                        </span>
+                        <span className={`px-1.5 py-0.2 rounded-md text-[10px] font-medium ${
+                          kw.level === 'danger'
+                            ? 'bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300'
+                            : 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300'
+                        }`}>
+                          {kw.level === 'danger' ? 'Bahaya Tinggi' : 'Waspada'}
+                        </span>
+                      </div>
+                      <span className="text-[11px] text-slate-400 font-normal">
+                        Kategori: {kw.category}
                       </span>
                     </div>
-                    <span className="text-[11px] text-slate-400 font-normal">
-                      Kategori: {kw.category}
-                    </span>
-                  </div>
 
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteKeyword(kw.id, kw.word)}
-                    className="p-1 text-slate-400 hover:text-rose-500 rounded-lg cursor-pointer"
-                    title="Hapus kata kunci"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              ))}
-            </div>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteKeyword(kw.id, kw.word)}
+                      className="p-1 text-slate-400 hover:text-rose-500 rounded-lg cursor-pointer"
+                      title="Hapus kata kunci"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}

@@ -73,7 +73,16 @@ class AuthController extends Controller
     // Ambil data user yang sedang login (berdasarkan user_id untuk simulasi)
     public function me(Request $request): JsonResponse
     {
-        $userId = $request->input('user_id', 1);
+        // ZERO TOLERANCE PRIVASI: TIDAK BOLEH ADA default user_id = 1 (bocor data admin!)
+        $userId = $request->input('user_id');
+        if (empty($userId) || !is_numeric($userId)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'user_id tidak valid atau belum login',
+            ], 401);
+        }
+        $userId = (int) $userId;
+
         $user = User::findOrFail($userId);
 
         // Update last_active

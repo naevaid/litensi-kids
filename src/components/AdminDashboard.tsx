@@ -96,7 +96,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [activeInboxSubTab, setActiveInboxSubTab] = useState<'chat' | 'broadcast'>('chat');
-  const [activePengaturanSubTab, setActivePengaturanSubTab] = useState<PengaturanSubTab>('konfigurasi');
+  // Subtab Pengaturan default = Langganan Keluarga Saya (item PERTAMA di sidebar, Proteksi Anak DIHAPUS)
+  const [activePengaturanSubTab, setActivePengaturanSubTab] = useState<PengaturanSubTab>('langganan_saya');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isMobileOrTablet, setIsMobileOrTablet] = useState(false);
   const [showUserDropdown, setShowUserDropdown] = useState(false);
@@ -193,17 +194,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       setIsSidebarOpen(false);
     }
   };
-
-  // Initial configuration state
-  const [configValues, setConfigValues] = useState({
-    systemName: 'Litensi Kids Parental Control',
-    adminEmail: currentUser.email || 'orangtua@litensikids.id',
-    timezone: 'Asia/Jakarta (WIB)',
-    language: 'id',
-    autoLock: true,
-    safeSearch: true,
-    locationTracking: true
-  });
 
   return (
     <div className="min-h-screen bg-[#0e1626] dark:bg-[#0a0f1d] text-slate-800 dark:text-slate-100 flex flex-col font-sans transition-colors duration-200">
@@ -611,13 +601,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <KelolaPengaturanPage
                 initialSubTab={activePengaturanSubTab}
                 onSubTabChange={(tab) => setActivePengaturanSubTab(tab)}
-                konfigurasiProps={{
-                  config: configValues,
-                  onSaveConfig: (newCfg) => {
-                    setConfigValues(newCfg);
-                    showToast('Konfigurasi sistem berhasil diperbarui', 'success');
-                  }
-                }}
                 showToast={showToast}
               />
             )}

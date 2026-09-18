@@ -31,8 +31,11 @@ Route::prefix('v1')->group(function () {
 
     // === Paket Langganan dapat diakses publik ===
     Route::get('/paket', [PaketController::class, 'index']);
-    Route::get('/paket/{id}', [PaketController::class, 'show']);
+    // PENTING URUTAN: Route spesifik /mine & /upgrade DIDEKLARASIKAN SEBELUM WILDCARD {id}
+    // Kalau terbalik: /paket/mine match ke {id} → call show("mine") → TypeError PHP 8 typed arg (HTTP 500!)
+    Route::get('/paket/mine', [PaketController::class, 'mine']); // Status paket aktif user per user_id
     Route::post('/paket/upgrade', [PaketController::class, 'upgrade']);
+    Route::get('/paket/{id}', [PaketController::class, 'show'])->whereNumber('id'); // HANYA numeric ID!
 
     // === Dashboard ===
     Route::prefix('dashboard')->group(function () {
@@ -43,8 +46,9 @@ Route::prefix('v1')->group(function () {
 
     // === Modul Kelola Anak (ProfilAnak) ===
     Route::prefix('anak')->group(function () {
-        // Endpoint Pairing Step 1 & Realtime Status (harus sebelum {id} wildcard!)
+        // Endpoint Pairing Step 1, Step 2 Confirm (Android), & Realtime Status (harus sebelum {id} wildcard!)
         Route::post('/pairing/generate', [AnakController::class, 'generatePairing']);
+        Route::post('/pairing/confirm', [AnakController::class, 'confirmPairing']);
         Route::get('/pairing/status', [AnakController::class, 'pairingStatus']);
 
         Route::get('/', [AnakController::class, 'index']);

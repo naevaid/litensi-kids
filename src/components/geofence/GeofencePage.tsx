@@ -8,20 +8,48 @@ import {
 import { GeofenceZone, GeofenceLog } from '../../types';
 import { GoogleMapsGeofenceView } from './GoogleMapsGeofenceView';
 import { GoogleMapsLocationPicker } from './GoogleMapsLocationPicker';
-import { api } from '../../lib/apiClient';
+import { api, getSessionUser } from '../../lib/apiClient';
 
 interface GeofencePageProps {
   showToast: (msg: string, type?: 'success' | 'error' | 'warning' | 'info') => void;
 }
 
-// Mapping id anak dari DB (child-1, child-2) ke nama asli user_id=1 (seed profil_anak)
-const CHILD_ID_MAP: Record<string, string> = {
-  'child-1': 'Nadia',
-  'child-2': 'Rayhan',
-};
+interface ChildOptionItem {
+  id: string;
+  name: string;
+  deviceName: string;
+  age?: number;
+}
+
+interface MarkerChild {
+  id: string;
+  name: string;
+  device: string;
+  lat: number;
+  lng: number;
+  battery: string;
+  accuracy: string;
+  status: string;
+  zone: string;
+  color: string;
+  avatar: string;
+}
+
+const PLACEHOLDER_ALAMAT_DEFAULT = '';
+const DEFAULT_RADIUS_METERS = 150;
+const TENGAH_INA_DEFAULT = { lat: -2.5, lng: 118 };
+
+// Mapping response API /anak ke ChildOptionItem
+const mapApiAnakToChildOption = (db: any): ChildOptionItem => ({
+  id: String(db.id ?? `anak-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`),
+  name: db.name ?? String(db.id ?? 'Anak'),
+  deviceName: db.device_name ?? db.deviceName ?? 'Perangkat Anak',
+  age: db.age ? Number(db.age) : undefined,
+});
 
 // Helper: Map DB snake_case → TS camelCase untuk zona geofence
-function mapDbZonaGeofenceToInterface(db: any): GeofenceZone {
+// Menerima children state (sudah loaded) untuk mapping assigned_children id/name ke nama asli user
+const makeMapDbZonaGeofenceToInterface = (children: ChildOptionItem[]) => (db: any): GeofenceZone => {
   const getColorByCategory = (cat: string) => {
     switch (cat) {
       case 'home': return '#10b981';
@@ -32,8 +60,13 @@ function mapDbZonaGeofenceToInterface(db: any): GeofenceZone {
     }
   };
 
-  const assignedChildrenRaw = Array.isArray(db.assigned_children) ? db.assigned_children : [];
-  const assignedChildren = assignedChildrenRaw.map((cid: string) => CHILD_ID_MAP[cid] || cid);
+  const assignedRaw = Array.isArray(db.assigned_children) ? db.assigned_children : [];
+  const assignedChildren = assignedRaw.map((raw: string) => {
+    const byId = children.find(c => c.id === raw);
+    if (byId) return byId.name;
+    const byName = children.find(c => c.name === raw);
+    return byName ? byName.name : raw;
+  }).filter(Boolean) as string[];
 
   let lastTriggered = '-';
   if (db.last_triggered) {
@@ -54,20 +87,20 @@ function mapDbZonaGeofenceToInterface(db: any): GeofenceZone {
   return {
     id: String(db.id ?? `zone-${Date.now()}`),
     name: String(db.name ?? 'Zona Geofence'),
-    category: (['safe','danger','warning','school','home'].includes(db.category) ? db.category : 'safe') as GeofenceZone['category'],
-    address: String(db.address ?? '-'),
-    latitude: Number(db.latitude ?? 0),
-    longitude: Number(db.longitude ?? 0),
-    radiusMeters: Number(db.radius_meters ?? 100),
-    assignedChildren,
-    notifyOnEnter: Boolean(db.notify_on_enter ?? true),
-    notifyOnExit: Boolean(db.notify_on_exit ?? true),
-    status: db.status === 'inactive' ? 'inactive' : 'active',
+  category: (['safe','danger','warning','school','home'].includes(db.category) ? db.category : 'unknown') as any,
+  address: String(db.address ?? '-'),
+  latitude: Number(db.latitude ?? 0),
+  longitude: Number(db.longitude ?? 0),
+  radiusMeters: Number(db.radius_meters ?? DEFAULT_RADIUS_METERS),
+  assignedChildren,
+  notifyOnEnter: Boolean(db.notify_on_enter ?? true),
+  notifyOnExit: Boolean(db.notify_on_exit ?? true),
+  status: db.status === 'active' ? 'active' : (db.status === 'inactive' ? 'inactive' : 'unknown'),
     color: String(db.color ?? getColorByCategory(db.category)),
     lastTriggered,
     createdAt: String(db.created_at ?? new Date().toISOString().split('T')[0]),
   };
-}
+};
 
 // Helper: Map DB snake_case → TS camelCase untuk log geofence
 function mapDbLogGeofenceToInterface(db: any): GeofenceLog {
@@ -111,12 +144,13 @@ function mapDbLogGeofenceToInterface(db: any): GeofenceLog {
     timestamp,
     locationCoordinates: String(db.location_coordinates ?? '-'),
     batteryStatus: db.battery_status ? String(db.battery_status) : undefined,
-    accuracy: String(db.accuracy ?? '±10 meter'),
+    accuracy: String(db.accuracy ?? '-'),
   };
 }
 
-// Helper: Reverse mapper form state → DB snake_case body untuk POST/PUT
-function mapFormToDbBody(params: {
+// Helper: Reverse mapper form state anak ID/NAME ke DB string list.
+// Jika user memilih ID (dari children state) → kirim ID asli, jika legacy name → kirim name (mapping backend akan tangani)
+const makeMapFormToDbBody = (children: ChildOptionItem[]) => (params: {
   editingZoneId?: string;
   formName: string;
   formCategory: GeofenceZone['category'];
@@ -127,10 +161,13 @@ function mapFormToDbBody(params: {
   formChildren: string[];
   formNotifyEnter: boolean;
   formNotifyExit: boolean;
-}) {
-  const CHILD_NAME_TO_ID: Record<string, string> = {};
-  Object.entries(CHILD_ID_MAP).forEach(([id, name]) => { CHILD_NAME_TO_ID[name] = id; });
-  const assignedChildrenIds = params.formChildren.map(n => CHILD_NAME_TO_ID[n] || n);
+}) => {
+  const assignedChildrenDb: string[] = params.formChildren.map(selected => {
+    const byId = children.find(c => c.id === selected);
+    if (byId) return byId.id;
+    const byName = children.find(c => c.name === selected);
+    return byName ? byName.id : selected;
+  }).filter(Boolean);
   return {
     name: params.formName.trim(),
     category: params.formCategory,
@@ -138,11 +175,11 @@ function mapFormToDbBody(params: {
     latitude: params.formLat,
     longitude: params.formLng,
     radius_meters: params.formRadius,
-    assigned_children: assignedChildrenIds,
+    assigned_children: assignedChildrenDb,
     notify_on_enter: params.formNotifyEnter,
     notify_on_exit: params.formNotifyExit,
   };
-}
+};
 
 // Helper: Format timestamp relatif (untuk KPI card)
 function formatRelatifTime(dbTimestamp: string | null | undefined): string {
@@ -168,13 +205,15 @@ export const GeofencePage: React.FC<GeofencePageProps> = ({ showToast }) => {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [zones, setZones] = useState<GeofenceZone[]>([]);
   const [logs, setLogs] = useState<GeofenceLog[]>([]);
+  const [children, setChildren] = useState<ChildOptionItem[]>([]);
+  const [loadingChildren, setLoadingChildren] = useState(true);
   const [activeTab, setActiveTab] = useState<'peta' | 'daftar' | 'riwayat'>('peta');
   const [isSaving, setIsSaving] = useState(false);
 
   // Search & Filter
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
-  const [selectedChild, setSelectedChild] = useState<'all' | 'Rayhan' | 'Nadia'>('all');
+  const [selectedChild, setSelectedChild] = useState<string>('all');
   const [selectedZoneOnMap, setSelectedZoneOnMap] = useState<GeofenceZone | null>(null);
 
   // Add / Edit Modal State
@@ -182,11 +221,11 @@ export const GeofencePage: React.FC<GeofencePageProps> = ({ showToast }) => {
   const [editingZone, setEditingZone] = useState<GeofenceZone | null>(null);
   const [formName, setFormName] = useState('');
   const [formCategory, setFormCategory] = useState<GeofenceZone['category']>('safe');
-  const [formAddress, setFormAddress] = useState('');
-  const [formLat, setFormLat] = useState<number>(-6.2445);
-  const [formLng, setFormLng] = useState<number>(106.8040);
-  const [formRadius, setFormRadius] = useState(150);
-  const [formChildren, setFormChildren] = useState<string[]>(['Rayhan', 'Nadia']);
+  const [formAddress, setFormAddress] = useState(PLACEHOLDER_ALAMAT_DEFAULT);
+  const [formLat, setFormLat] = useState<number>(0);
+  const [formLng, setFormLng] = useState<number>(0);
+  const [formRadius, setFormRadius] = useState(DEFAULT_RADIUS_METERS);
+  const [formChildren, setFormChildren] = useState<string[]>([]);
   const [formNotifyEnter, setFormNotifyEnter] = useState(true);
   const [formNotifyExit, setFormNotifyExit] = useState(true);
   const [showMapPickerInModal, setShowMapPickerInModal] = useState(true);
@@ -197,16 +236,61 @@ export const GeofencePage: React.FC<GeofencePageProps> = ({ showToast }) => {
   // Live Simulated GPS State
   const [isRefreshingGps, setIsRefreshingGps] = useState(false);
 
+  // Helper: dapatkan anak dari children state (by id atau name fallback)
+  const getAnak = (idOrName: string): ChildOptionItem | null => {
+    if (!idOrName) return null;
+    const byId = children.find(c => c.id === idOrName);
+    if (byId) return byId;
+    const byName = children.find(c => c.name === idOrName);
+    return byName || null;
+  };
+
+  // Dapatkan daftar unik anak (gabungan children API + yang muncul di logs zona)
+  const daftarAnakUnik = useMemo<ChildOptionItem[]>(() => {
+    const mapByName = new Map<string, ChildOptionItem>();
+    if (Array.isArray(children)) {
+      children.forEach(c => { mapByName.set(c.name, c); });
+    }
+    // Tambahkan nama anak yang muncul di logs (jika tidak ada di children API)
+    logs.forEach(log => {
+      if (log.childName && !mapByName.has(log.childName)) {
+        mapByName.set(log.childName, {
+          id: `log-anak-${log.childName}`,
+          name: log.childName,
+          deviceName: log.deviceName || 'Perangkat Anak',
+        });
+      }
+    });
+    return Array.from(mapByName.values());
+  }, [children, logs]);
+
   // ============== LOAD DATA REAL DARI API ==============
   const loadData = async () => {
-    console.groupCollapsed('%c[Geofence] loadData GET /geofence + /geofence/logs', 'color:#0d9488;font-weight:700');
+    console.groupCollapsed('%c[Geofence] loadData GET /anak + /geofence + /geofence/logs', 'color:#0d9488;font-weight:700');
     try {
       setErrorMsg(null);
       setLoading(true);
+      setLoadingChildren(true);
+
+      const sessUser = getSessionUser();
+      let listAnak: ChildOptionItem[] = [];
+      const uid = sessUser?.id ? String(sessUser.id) : '';
+      if (uid) {
+        try {
+          const resAnak = await api.get<any[]>('/anak');
+          if (resAnak?.ok && Array.isArray(resAnak.data)) {
+            listAnak = resAnak.data.map(mapApiAnakToChildOption).filter(Boolean) as ChildOptionItem[];
+          }
+        } catch (errAnak) {
+          console.debug('[Geofence] gagal load daftar anak (lanjut empty list):', errAnak);
+        }
+      }
+      setChildren(listAnak);
+      setLoadingChildren(false);
 
       const [zonaResp, logResp] = await Promise.all([
-        api.get('/geofence'),
-        api.get('/geofence/logs'),
+        uid ? api.get('/geofence', { params: { user_id: uid } }) : Promise.resolve({ ok: true, data: [] } as any),
+        uid ? api.get('/geofence/logs', { params: { user_id: uid, limit: 100 } }) : Promise.resolve({ ok: true, data: [] } as any),
       ]);
 
       console.debug('%c[Geofence] GET /geofence response shape', 'color:#0d9488;font-weight:600', zonaResp);
@@ -217,7 +301,8 @@ export const GeofencePage: React.FC<GeofencePageProps> = ({ showToast }) => {
 
       console.debug(`%c[Geofence] Terima ${zonaPayload.length} zona + ${logPayload.length} log dari DB`, 'color:#0d9488;font-weight:600');
 
-      const mappedZones = zonaPayload.map((z: any) => mapDbZonaGeofenceToInterface(z));
+      const mapperZona = makeMapDbZonaGeofenceToInterface(listAnak);
+      const mappedZones = zonaPayload.map((z: any) => mapperZona(z));
       const mappedLogs = logPayload.map((l: any) => mapDbLogGeofenceToInterface(l));
 
       console.debug('%c[Geofence] Zona setelah mapping (camelCase):', 'color:#0d9488;font-weight:600', mappedZones);
@@ -240,6 +325,7 @@ export const GeofencePage: React.FC<GeofencePageProps> = ({ showToast }) => {
       showToast(msg, 'error');
     } finally {
       setLoading(false);
+      setLoadingChildren(false);
       console.groupEnd();
     }
   };
@@ -262,7 +348,8 @@ export const GeofencePage: React.FC<GeofencePageProps> = ({ showToast }) => {
       return;
     }
 
-    const body = mapFormToDbBody({
+    const mapperForm = makeMapFormToDbBody(children);
+    const body = mapperForm({
       editingZoneId: editingZone?.id,
       formName, formCategory, formAddress, formLat, formLng,
       formRadius, formChildren, formNotifyEnter, formNotifyExit,
@@ -328,25 +415,86 @@ export const GeofencePage: React.FC<GeofencePageProps> = ({ showToast }) => {
   }, [logs]);
 
   // Hitung rata-rata akurasi GPS dari semua log untuk KPI card 4
+  // ZERO TOLERANCE FALLBACK: JIKA TIDAK ADA DATA / TIDAK ADA ANGKA → RETURN '-' EMPTY STATE JUJUR.
   const avgAccuracyText = useMemo(() => {
-    if (logs.length === 0) return '±5 Meter';
-    // Ambil angka dari accuracy field, misal "Tinggi (7m)" → 7
+    if (logs.length === 0) return '-';
     const nums: number[] = [];
     logs.forEach(l => {
       const m = String(l.accuracy).match(/\d+/);
       if (m) nums.push(Number(m[0]));
     });
-    if (nums.length === 0) return '±5 Meter';
+    if (nums.length === 0) return '-';
     const avg = nums.reduce((a, b) => a + b, 0) / nums.length;
     return `±${Math.round(avg)} Meter`;
   }, [logs]);
 
-  const handleRefreshGps = () => {
+  const handleRefreshGps = async () => {
     setIsRefreshingGps(true);
-    setTimeout(() => {
+    try {
+      await loadData();
       setIsRefreshingGps(false);
-      showToast('Posisi GPS seluruh perangkat anak berhasil diperbarui secara real-time', 'success');
-    }, 600);
+      const totalLog = logs.length;
+      const totalZona = zones.length;
+      const totalAnak = Object.keys(latestLogPerChild).length;
+      const detail = totalZona || totalLog || totalAnak
+        ? ` (${totalZona} zona, ${totalAnak} perangkat, ${totalLog} log riwayat)`
+        : '';
+      showToast(`Berhasil muat ulang data geofence terbaru dari server${detail}`, 'success');
+    } catch (err) {
+      setIsRefreshingGps(false);
+      const msg = err instanceof Error ? err.message : 'Gagal muat ulang data geofence';
+      showToast(msg, 'error');
+    }
+  };
+
+  // Helper: Build marker anak untuk Google Maps dari latestLogPerChild
+  // ZERO HARDCODE: TIDAK ADA posisi RAYHAN/NADIA Jakarta hardcode.
+  // Jika log punya latitude/longitude field → pakai itu. Jika tidak (log legacy):
+  //   Jika zona terkait ada di zones → pakai tengah zona.
+  //   Jika tidak ada → fallback ke TENGAH_INA_DEFAULT (tidak bias kota)
+  const markerChildren = useMemo<MarkerChild[]>(() => {
+    const daftar = daftarAnakUnik;
+    if (daftar.length === 0) return [];
+    const PALETTE = ['#10b981', '#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b', '#ef4444'];
+    const hasil: MarkerChild[] = [];
+    daftar.forEach((anak, idx) => {
+      const log = latestLogPerChild[anak.name] || null;
+      let lat = Number(log?.latitude ?? 0);
+      let lng = Number(log?.longitude ?? 0);
+      if ((!lat && lat !== 0) || (!lng && lng !== 0) || (lat === 0 && lng === 0)) {
+        const zoneName = log?.zoneName || '';
+        const zonaDariNama = zoneName ? zones.find(z => z.name === zoneName) : null;
+        if (zonaDariNama) { lat = zonaDariNama.latitude; lng = zonaDariNama.longitude; }
+        else if (zones.length > 0) {
+          // Fallback tengah semua zona (user punya zona tapi log belum ada koordinat)
+          const sumLat = zones.reduce((a, z) => a + (Number(z.latitude) || 0), 0);
+          const sumLng = zones.reduce((a, z) => a + (Number(z.longitude) || 0), 0);
+          lat = sumLat / zones.length; lng = sumLng / zones.length;
+        } else {
+          // Fallback NETRAL: Tengah Indonesia (-2.5,118) BUKAN JAKARTA
+          lat = TENGAH_INA_DEFAULT.lat; lng = TENGAH_INA_DEFAULT.lng;
+        }
+      }
+      const badgeInfo = (() => { try { return getChildLocationBadge(anak.name); } catch { return { badge: 'Belum ada data', badgeColor: 'slate' as const, zone: '-' }; } })();
+      hasil.push({
+        id: anak.id,
+        name: anak.name,
+        device: anak.deviceName || (log?.deviceName ?? 'Perangkat Anak'),
+        lat: Number(lat) || TENGAH_INA_DEFAULT.lat,
+        lng: Number(lng) || TENGAH_INA_DEFAULT.lng,
+        battery: String(log?.batteryStatus ?? (log ? 'Data tersedia' : '-')).trim() || '-',
+        accuracy: String(log?.accuracy ?? (log ? 'Tersedia' : '-')).trim() || '-',
+        status: badgeInfo.badge || (log ? 'Data lokasi tersedia' : 'Belum ada log lokasi'),
+        zone: String(log?.zoneName ?? badgeInfo.zone ?? '-').trim() || '-',
+        color: PALETTE[idx % PALETTE.length],
+        avatar: (anak.name || 'A').trim().charAt(0).toUpperCase() || 'A',
+      });
+    });
+    return hasil;
+  }, [daftarAnakUnik, latestLogPerChild, zones]);
+
+  const handleSimulateTesting = () => {
+    showToast('Testing lokasi: Data marker anak diambil dari log riwayat perangkat. Simulasi pergerakan GPS real membutuhkan Android Companion App aktif di HP anak', 'info');
   };
 
   const handleToggleZoneStatus = (zoneId: string) => {
@@ -364,11 +512,13 @@ export const GeofencePage: React.FC<GeofencePageProps> = ({ showToast }) => {
     setEditingZone(null);
     setFormName(presetLocation?.name || '');
     setFormCategory('safe');
-    setFormAddress(presetLocation?.address || 'Jl. Melati No. 12, Kebayoran Baru, Jakarta Selatan');
-    setFormLat(presetLocation?.lat || -6.2445);
-    setFormLng(presetLocation?.lng || 106.8040);
-    setFormRadius(150);
-    setFormChildren(['Rayhan', 'Nadia']);
+    // ZERO HARDCODE: TIDAK ADA preset alamat Jl Melati / Koordinat Monas Jakarta
+    setFormAddress(presetLocation?.address || PLACEHOLDER_ALAMAT_DEFAULT);
+    setFormLat(Number(presetLocation?.lat ?? 0));
+    setFormLng(Number(presetLocation?.lng ?? 0));
+    setFormRadius(DEFAULT_RADIUS_METERS);
+    // ZERO HARDCODE: TIDAK ADA preselect anak Nadia/Rayhan
+    setFormChildren([]);
     setFormNotifyEnter(true);
     setFormNotifyExit(true);
     setShowMapPickerInModal(true);
@@ -407,7 +557,7 @@ export const GeofencePage: React.FC<GeofencePageProps> = ({ showToast }) => {
     return matchSearch && matchCat && matchChild;
   });
 
-  const getCategoryBadge = (cat: GeofenceZone['category']) => {
+  const getCategoryBadge = (cat: GeofenceZone['category'] | 'unknown') => {
     switch (cat) {
       case 'home':
         return (
@@ -433,10 +583,16 @@ export const GeofencePage: React.FC<GeofencePageProps> = ({ showToast }) => {
             <AlertTriangle className="w-3 h-3" /> Area Waspada
           </span>
         );
-      default:
+      case 'safe':
         return (
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800/50">
             <MapPin className="w-3 h-3" /> Tempat Les / Khusus
+          </span>
+        );
+      default:
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600">
+            <AlertTriangle className="w-3 h-3" /> Kategori Tidak Dikenal
           </span>
         );
     }
@@ -445,19 +601,21 @@ export const GeofencePage: React.FC<GeofencePageProps> = ({ showToast }) => {
   const activeZonesCount = zones.filter(z => z.status === 'active').length;
 
   // Helper untuk mendapatkan status badge lokasi anak (untuk side panel di tab peta)
+  // ZERO TOLERANCE FALLBACK: DEFAULT JANGAN ANGGAP "DALAM ZONA AMAN" BILA ZONETYPE TIDAK DIKETAHUI.
   const getChildLocationBadge = (childName: string) => {
     const log = latestLogPerChild[childName];
     if (!log) return { zone: 'Lokasi tidak diketahui', badge: 'Tidak Terdata', badgeColor: 'slate' };
     const zoneType = log.zoneType;
     const zoneName = log.zoneName;
-    let badge = 'Dalam Zona Aman';
-    let badgeColor: 'emerald' | 'blue' | 'rose' | 'amber' | 'slate' = 'emerald';
+    let badge: string;
+    let badgeColor: 'emerald' | 'blue' | 'rose' | 'amber' | 'slate' = 'slate';
     switch (zoneType) {
       case 'home': badge = 'Di Rumah'; badgeColor = 'emerald'; break;
       case 'school': badge = 'Di Sekolah'; badgeColor = 'blue'; break;
       case 'danger': badge = 'ZONA BAHAYA!'; badgeColor = 'rose'; break;
       case 'warning': badge = 'Area Waspada'; badgeColor = 'amber'; break;
-      default: badge = 'Dalam Zona Aman'; badgeColor = 'emerald'; break;
+      case 'safe': badge = 'Dalam Zona Aman'; badgeColor = 'emerald'; break;
+      default: badge = 'Lokasi tidak terverifikasi'; badgeColor = 'slate'; break;
     }
     return { zone: zoneName, badge, badgeColor };
   };
@@ -564,39 +722,50 @@ export const GeofencePage: React.FC<GeofencePageProps> = ({ showToast }) => {
           <div className="text-[11px] text-slate-400 font-normal mt-0.5">Dari total {zones.length} radius terdaftar</div>
         </div>
 
-        {/* KPI 2: RAYHAN DINAMIS DARI LOG TERBARU */}
-        <div className="bg-white dark:bg-slate-800/80 p-3.5 rounded-2xl border border-slate-200/80 dark:border-slate-700/80">
-          <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 mb-1">
-            <span className="text-xs font-normal">Rayhan (Xiaomi)</span>
-            <span className={`w-2 h-2 rounded-full ${latestLogPerChild['Rayhan'] ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`}></span>
-          </div>
-          <div className="text-base font-medium text-emerald-600 dark:text-emerald-400 truncate">
-            {loading ? '...' : (latestLogPerChild['Rayhan']?.zoneName ?? 'Lokasi tidak diketahui')}
-          </div>
-          <div className="text-[11px] text-slate-400 font-normal mt-0.5 flex items-center gap-1">
-            <Battery className="w-3 h-3 text-emerald-500" />
-            <span>{loading ? '...' : (latestLogPerChild['Rayhan']?.batteryStatus ?? '-')}</span>
-            <span>•</span>
-            <span>{loading ? '...' : (latestLogPerChild['Rayhan']?.timestamp ? latestLogPerChild['Rayhan'].timestamp.split('(')[0].trim() : 'Belum ada data')}</span>
-          </div>
-        </div>
-
-        {/* KPI 3: NADIA DINAMIS DARI LOG TERBARU */}
-        <div className="bg-white dark:bg-slate-800/80 p-3.5 rounded-2xl border border-slate-200/80 dark:border-slate-700/80">
-          <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 mb-1">
-            <span className="text-xs font-normal">Nadia (Samsung Tab)</span>
-            <span className={`w-2 h-2 rounded-full ${latestLogPerChild['Nadia'] ? 'bg-blue-500 animate-pulse' : 'bg-slate-400'}`}></span>
-          </div>
-          <div className="text-base font-medium text-blue-600 dark:text-blue-400 truncate">
-            {loading ? '...' : (latestLogPerChild['Nadia']?.zoneName ?? 'Lokasi tidak diketahui')}
-          </div>
-          <div className="text-[11px] text-slate-400 font-normal mt-0.5 flex items-center gap-1">
-            <Battery className="w-3 h-3 text-emerald-500" />
-            <span>{loading ? '...' : (latestLogPerChild['Nadia']?.batteryStatus ?? '-')}</span>
-            <span>•</span>
-            <span>{loading ? '...' : (latestLogPerChild['Nadia']?.timestamp ? latestLogPerChild['Nadia'].timestamp.split('(')[0].trim() : 'Belum ada data')}</span>
-          </div>
-        </div>
+        {/* KPI 2 & 3 DINAMIS: Daftar Anak dari daftarAnakUnik (maks 2 anak pertama = layout sm:grid-cols-4) */}
+        {daftarAnakUnik.length === 0 && (
+          <>
+            <div className="bg-white dark:bg-slate-800/80 p-3.5 rounded-2xl border border-slate-200/80 dark:border-slate-700/80">
+              <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 mb-1">
+                <span className="text-xs font-normal">Anak Belum Ada Data</span>
+                <span className="w-2 h-2 rounded-full bg-slate-400"></span>
+              </div>
+              <div className="text-base font-medium text-slate-500 dark:text-slate-400 truncate">
+                {loadingChildren ? 'Memuat...' : 'Belum ada perangkat'}
+              </div>
+              <div className="text-[11px] text-slate-400 font-normal mt-0.5 flex items-center gap-1">
+                <Battery className="w-3 h-3 text-slate-400" />
+                <span>-</span>
+                <span>•</span>
+                <span>Tambahkan anak & perangkat terlebih dahulu</span>
+              </div>
+            </div>
+            <div className="hidden sm:block bg-white dark:bg-slate-800/80 p-3.5 rounded-2xl border border-slate-200/80 dark:border-slate-700/80 opacity-0 pointer-events-none" aria-hidden="true" />
+          </>
+        )}
+        {daftarAnakUnik.slice(0, 2).map((anak, idx) => {
+          const log = latestLogPerChild[anak.name];
+          const palette = idx === 0
+            ? { color: 'emerald', title: 'text-emerald-600 dark:text-emerald-400', dot: 'bg-emerald-500' }
+            : { color: 'blue', title: 'text-blue-600 dark:text-blue-400', dot: 'bg-blue-500' };
+          return (
+            <div key={`kpi-anak-${anak.id}`} className="bg-white dark:bg-slate-800/80 p-3.5 rounded-2xl border border-slate-200/80 dark:border-slate-700/80">
+              <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 mb-1">
+                <span className="text-xs font-normal truncate">{anak.name} ({anak.deviceName || 'Perangkat'})</span>
+                <span className={`w-2 h-2 shrink-0 rounded-full ${log ? `${palette.dot} animate-pulse` : 'bg-slate-400'}`}></span>
+              </div>
+              <div className={`text-base font-medium truncate ${palette.title}`}>
+                {loading ? '...' : (log?.zoneName ?? 'Lokasi tidak diketahui')}
+              </div>
+              <div className="text-[11px] text-slate-400 font-normal mt-0.5 flex items-center gap-1">
+                <Battery className="w-3 h-3 text-emerald-500" />
+                <span>{loading ? '...' : (log?.batteryStatus ?? '-')}</span>
+                <span>•</span>
+                <span className="truncate">{loading ? '...' : (log?.timestamp ? String(log.timestamp).split('(')[0].trim() : 'Belum ada data')}</span>
+              </div>
+            </div>
+          );
+        })}
 
         {/* KPI 4: AKURASI GPS DINAMIS */}
         <div className="bg-white dark:bg-slate-800/80 p-3.5 rounded-2xl border border-slate-200/80 dark:border-slate-700/80">
@@ -607,7 +776,11 @@ export const GeofencePage: React.FC<GeofencePageProps> = ({ showToast }) => {
           <div className="text-base font-medium text-indigo-600 dark:text-indigo-400">
             {loading ? '...' : avgAccuracyText}
           </div>
-          <div className="text-[11px] text-slate-400 font-normal mt-0.5">High Precision Satellite</div>
+          <div className="text-[11px] text-slate-400 font-normal mt-0.5">
+            {avgAccuracyText === '-'
+              ? 'Data akurasi GPS belum tersedia dari log perangkat'
+              : 'Berdasarkan data log GPS perangkat'}
+          </div>
         </div>
       </div>
 
@@ -663,6 +836,8 @@ export const GeofencePage: React.FC<GeofencePageProps> = ({ showToast }) => {
               selectedZone={selectedZoneOnMap}
               onSelectZone={(z) => setSelectedZoneOnMap(z)}
               showToast={showToast}
+              markerChildren={markerChildren}
+              onRequestSimulateTesting={handleSimulateTesting}
             />
           </div>
 
@@ -674,49 +849,47 @@ export const GeofencePage: React.FC<GeofencePageProps> = ({ showToast }) => {
                 <span className="text-[11px] text-slate-400 font-normal">Real-time</span>
               </h3>
 
-              {/* Child 1 Card DINAMIS */}
-              <div className="p-3 bg-slate-50 dark:bg-slate-900/60 rounded-xl border border-slate-200/60 dark:border-slate-800 space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="w-7 h-7 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 flex items-center justify-center text-xs font-medium">
-                      R
-                    </div>
-                    <div>
-                      <div className="text-xs font-medium text-slate-800 dark:text-slate-200">Rayhan</div>
-                      <div className="text-[10px] text-slate-400 font-normal">{latestLogPerChild['Rayhan']?.deviceName ?? 'Xiaomi Redmi 10'}</div>
-                    </div>
-                  </div>
-                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${badgeColorClass(getChildLocationBadge('Rayhan').badgeColor, 'bg')} ${badgeColorClass(getChildLocationBadge('Rayhan').badgeColor, 'text')}`}>
-                    {getChildLocationBadge('Rayhan').badge}
-                  </span>
+              {daftarAnakUnik.length === 0 && (
+                <div className="p-3 bg-slate-50 dark:bg-slate-900/60 rounded-xl border border-slate-200/60 dark:border-slate-800 text-center text-xs text-slate-500 dark:text-slate-400 font-normal">
+                  Belum ada data perangkat anak. Tambahkan anak terlebih dahulu di halaman Kelola Anak.
                 </div>
-                <div className="text-xs font-normal text-slate-600 dark:text-slate-300 flex items-center gap-1.5 pt-1 border-t border-slate-200/40 dark:border-slate-800">
-                  <MapPin className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                  <span className="truncate">{getChildLocationBadge('Rayhan').zone}</span>
-                </div>
-              </div>
+              )}
 
-              {/* Child 2 Card DINAMIS */}
-              <div className="p-3 bg-slate-50 dark:bg-slate-900/60 rounded-xl border border-slate-200/60 dark:border-slate-800 space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="w-7 h-7 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300 flex items-center justify-center text-xs font-medium">
-                      N
+              {daftarAnakUnik.map((anak, idx) => {
+                const badgeInfo = getChildLocationBadge(anak.name);
+                const palette = idx === 0
+                  ? { avatar: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300', accent: 'text-emerald-500' }
+                  : idx === 1
+                    ? { avatar: 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300', accent: 'text-blue-500' }
+                    : { avatar: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300', accent: 'text-indigo-500' };
+                const log = latestLogPerChild[anak.name];
+                const initial = anak.name?.trim().charAt(0).toUpperCase() || 'A';
+                return (
+                  <div
+                    key={`pos-anak-${anak.id}`}
+                    className="p-3 bg-slate-50 dark:bg-slate-900/60 rounded-xl border border-slate-200/60 dark:border-slate-800 space-y-2"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className={`w-7 h-7 shrink-0 rounded-full ${palette.avatar} flex items-center justify-center text-xs font-medium`}>
+                          {initial}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-xs font-medium text-slate-800 dark:text-slate-200 truncate">{anak.name}</div>
+                          <div className="text-[10px] text-slate-400 font-normal truncate">{log?.deviceName ?? anak.deviceName ?? 'Perangkat Anak'}</div>
+                        </div>
+                      </div>
+                      <span className={`shrink-0 px-2 py-0.5 rounded-full text-[10px] font-medium ${badgeColorClass(badgeInfo.badgeColor, 'bg')} ${badgeColorClass(badgeInfo.badgeColor, 'text')}`}>
+                        {badgeInfo.badge}
+                      </span>
                     </div>
-                    <div>
-                      <div className="text-xs font-medium text-slate-800 dark:text-slate-200">Nadia</div>
-                      <div className="text-[10px] text-slate-400 font-normal">{latestLogPerChild['Nadia']?.deviceName ?? 'Tablet Samsung Tab A8'}</div>
+                    <div className="text-xs font-normal text-slate-600 dark:text-slate-300 flex items-center gap-1.5 pt-1 border-t border-slate-200/40 dark:border-slate-800">
+                      <MapPin className={`w-3.5 h-3.5 shrink-0 ${palette.accent}`} />
+                      <span className="truncate">{badgeInfo.zone}</span>
                     </div>
                   </div>
-                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${badgeColorClass(getChildLocationBadge('Nadia').badgeColor, 'bg')} ${badgeColorClass(getChildLocationBadge('Nadia').badgeColor, 'text')}`}>
-                    {getChildLocationBadge('Nadia').badge}
-                  </span>
-                </div>
-                <div className="text-xs font-normal text-slate-600 dark:text-slate-300 flex items-center gap-1.5 pt-1 border-t border-slate-200/40 dark:border-slate-800">
-                  <MapPin className="w-3.5 h-3.5 text-blue-500 shrink-0" />
-                  <span className="truncate">{getChildLocationBadge('Nadia').zone}</span>
-                </div>
-              </div>
+                );
+              })}
             </div>
 
             {/* Quick Add Geofence Promo Card */}
@@ -773,12 +946,18 @@ export const GeofencePage: React.FC<GeofencePageProps> = ({ showToast }) => {
 
               <select
                 value={selectedChild}
-                onChange={(e) => setSelectedChild(e.target.value as any)}
+                onChange={(e) => setSelectedChild(e.target.value)}
                 className="px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-normal text-slate-700 dark:text-slate-300 focus:outline-hidden"
               >
                 <option value="all">Semua Anak</option>
-                <option value="Rayhan">Rayhan</option>
-                <option value="Nadia">Nadia</option>
+                {children.length === 0 && !loadingChildren && (
+                  <option value="" disabled>Belum ada daftar anak</option>
+                )}
+                {children.map(anak => (
+                  <option key={`filter-anak-${anak.id}`} value={anak.id}>
+                    {anak.name}
+                  </option>
+                ))}
               </select>
             </div>
           </div>
@@ -1136,26 +1315,28 @@ export const GeofencePage: React.FC<GeofencePageProps> = ({ showToast }) => {
                 <label className="block text-xs font-normal text-slate-700 dark:text-slate-300 mb-1.5">
                   Anak yang Diawasi di Radius Ini
                 </label>
+                {children.length === 0 && (
+                  <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200/60 dark:border-slate-700/60 text-center text-xs font-normal text-slate-500 dark:text-slate-400 mb-2">
+                    {loadingChildren
+                      ? 'Memuat daftar anak...'
+                      : 'Belum ada data anak. Tambahkan anak terlebih dahulu di halaman Kelola Anak agar bisa memilih siapa yang diawasi di zona ini.'}
+                  </div>
+                )}
                 <div className="flex flex-wrap items-center gap-3">
-                  <label className="flex items-center gap-2 text-xs font-normal text-slate-700 dark:text-slate-300 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={formChildren.includes('Rayhan')}
-                      onChange={() => toggleChildSelection('Rayhan')}
-                      className="rounded text-emerald-600"
-                    />
-                    <span>Rayhan (Xiaomi Redmi 10)</span>
-                  </label>
-
-                  <label className="flex items-center gap-2 text-xs font-normal text-slate-700 dark:text-slate-300 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={formChildren.includes('Nadia')}
-                      onChange={() => toggleChildSelection('Nadia')}
-                      className="rounded text-emerald-600"
-                    />
-                    <span>Nadia (Tablet Samsung Tab A8)</span>
-                  </label>
+                  {children.map(anak => (
+                    <label
+                      key={`assign-anak-${anak.id}`}
+                      className="flex items-center gap-2 text-xs font-normal text-slate-700 dark:text-slate-300 cursor-pointer"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={formChildren.includes(anak.id) || formChildren.includes(anak.name)}
+                        onChange={() => toggleChildSelection(anak.id)}
+                        className="rounded text-emerald-600"
+                      />
+                      <span>{anak.name} ({anak.deviceName || 'Perangkat'})</span>
+                    </label>
+                  ))}
                 </div>
               </div>
 

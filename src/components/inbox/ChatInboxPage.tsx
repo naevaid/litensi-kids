@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   MessageSquare, Clock, Search, ShieldAlert,
   Send, Paperclip, CheckCircle2, User, Smartphone, ShieldCheck,
-  AlertTriangle, Bell, ArrowLeft, Plus
+  AlertTriangle, Bell, ArrowLeft, Plus, MessageCircle
 } from 'lucide-react';
 import { User as UserType } from '../../types';
+import { api, getSessionUser } from '../../lib/apiClient';
 
 interface ChatMessage {
   id: string;
@@ -18,10 +19,12 @@ interface ChatMessage {
 
 interface DeviceThread {
   id: string;
+  anakId: string;
   childName: string;
+  childFullName: string;
   deviceModel: string;
   status: 'online' | 'offline' | 'restricted';
-  battery: number;
+  battery: number | null;
   lastMessage: string;
   lastTime: string;
   unread: number;
@@ -35,73 +38,127 @@ interface ChatInboxPageProps {
   onNavigate?: (page: any) => void;
 }
 
+// Interface + helper mapping daftar anak dari API /anak
+interface ChildOptionItem {
+  id: string;
+  nama_lengkap: string;
+  nama_panggilan: string;
+  device_model: string | null;
+  os_version: string | null;
+  label: string;
+}
+const mapApiAnakToChildOption = (db: any): ChildOptionItem | null => {
+  if (!db) return null;
+  const id = String(db.id ?? '');
+  const namaLengkap = String(db.nama_lengkap ?? '').trim();
+  const namaPanggilan = String(db.nama_panggilan ?? '').trim();
+  const deviceModel = db.device_model ? String(db.device_model) : null;
+  const osVersion = db.os_version ? String(db.os_version) : null;
+  const displayName = namaPanggilan || namaLengkap || `Anak #${id}`;
+  const deviceStr = deviceModel ? deviceModel : (osVersion ? `Android ${osVersion}` : 'Perangkat');
+  return {
+    id,
+    nama_lengkap: namaLengkap,
+    nama_panggilan: namaPanggilan,
+    device_model: deviceModel,
+    os_version: osVersion,
+    label: `${displayName} (${deviceStr})`,
+  };
+};
+
+// Palet warna avatar konsisten berdasarkan index (tidak hardcode nama)
+const AVATAR_COLOR_PALET = [
+  'bg-indigo-600', 'bg-purple-600', 'bg-emerald-600',
+  'bg-amber-600', 'bg-rose-600', 'bg-sky-600',
+  'bg-teal-600', 'bg-orange-600',
+];
+
+// Mapper: ChildOptionItem → DeviceThread (tanpa data dummy pesan)
+const mapChildToThread = (child: ChildOptionItem, idx: number): DeviceThread => {
+  const displayName = child.nama_panggilan || child.nama_lengkap;
+  return {
+    id: `thread-anak-${child.id}`,
+    anakId: child.id,
+    childName: displayName,
+    childFullName: child.nama_lengkap,
+    deviceModel: child.device_model || child.os_version ? `Android ${child.os_version}` : 'Perangkat',
+    status: 'offline', // Default JUJUR: sampai ada real status dari app companion
+    battery: null, // Jangan hardcode 84% / 62% boongan
+    lastMessage: '-',
+    lastTime: '-',
+    unread: 0,
+    avatarColor: AVATAR_COLOR_PALET[idx % AVATAR_COLOR_PALET.length],
+    messages: [], // BELUM ada pesan riil dari DB
+  };
+};
+
 export const ChatInboxPage: React.FC<ChatInboxPageProps> = ({ user, showToast }) => {
+  const sessUser = getSessionUser();
+  const uid = sessUser?.id ? String(sessUser.id) : '';
+
+  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeThreadId, setActiveThreadId] = useState<string>('thread-1');
+  const [activeThreadId, setActiveThreadId] = useState<string>('');
   const [inputText, setInputText] = useState('');
   const [mobileView, setMobileView] = useState<'list' | 'chat'>('list');
+  const [children, setChildren] = useState<ChildOptionItem[]>([]);
 
-  const [threads, setThreads] = useState<DeviceThread[]>([
-    {
-      id: 'thread-1',
-      childName: 'Nadia (10 thn)',
-      deviceModel: 'Tablet Samsung Tab A8',
-      status: 'online',
-      battery: 84,
-      lastMessage: 'Ayah, boleh minta perpanjangan waktu belajar 30 menit?',
-      lastTime: '10:15',
-      unread: 1,
-      avatarColor: 'bg-indigo-600',
-      messages: [
-        {
-          id: 'm1',
-          sender: 'system',
-          text: 'Batas waktu layar harian telah mencapai 1 jam 15 menit. Perangkat beralih ke Mode Belajar.',
-          timestamp: '10:00',
-          isAlert: true
-        },
-        {
-          id: 'm2',
-          sender: 'child',
-          childName: 'Nadia',
-          text: 'Ayah, boleh minta perpanjangan waktu belajar 30 menit? Mau ngerjain tugas Ruangguru.',
-          timestamp: '10:15'
-        }
-      ]
-    },
-    {
-      id: 'thread-2',
-      childName: 'Rayhan (7 thn)',
-      deviceModel: 'Xiaomi Redmi 10',
-      status: 'online',
-      battery: 62,
-      lastMessage: 'Aplikasi YouTube Kids telah diizinkan hingga pukul 17:00.',
-      lastTime: '08:30',
-      unread: 0,
-      avatarColor: 'bg-purple-600',
-      messages: [
-        {
-          id: 'm3',
-          sender: 'child',
-          childName: 'Rayhan',
-          text: 'Bunda, mau nonton video edukasi sains dong.',
-          timestamp: '08:25'
-        },
-        {
-          id: 'm4',
-          sender: 'parent',
-          text: 'Sudah diizinkan ya sayang, batasnya 30 menit.',
-          timestamp: '08:30'
-        }
-      ]
+  // ZERO HARDCODE: threads initial KOSONG, nanti diisi dari API /anak via loadData
+  const [threads, setThreads] = useState<DeviceThread[]>([]);
+
+  // Load daftar anak untuk membuat thread list dinamis
+  const loadData = async () => {
+    console.groupCollapsed('%c[ChatInbox] loadData GET /anak', 'color:#6366f1;font-weight:700');
+    try {
+      setLoading(true);
+      const resAnak = uid
+        ? await api.get('/anak', { params: { user_id: uid } })
+        : Promise.resolve({ ok: true, data: [] } as any);
+
+      const anakRawArray: any[] = Array.isArray(resAnak?.data)
+        ? resAnak.data
+        : (resAnak?.data?.list ?? resAnak?.data?.data ?? []);
+      const listAnak = anakRawArray
+        .map(mapApiAnakToChildOption)
+        .filter(Boolean) as ChildOptionItem[];
+      setChildren(listAnak);
+
+      const newThreads = listAnak.map(mapChildToThread);
+      setThreads(newThreads);
+
+      // Auto-pilih thread pertama jika ada (tanpa hardcode 'thread-1')
+      if (newThreads.length > 0 && !activeThreadId) {
+        setActiveThreadId(newThreads[0].id);
+      }
+      // Jika thread aktif sebelumnya tidak ada lagi (anak dihapus), reset
+      if (activeThreadId && !newThreads.find(t => t.id === activeThreadId)) {
+        setActiveThreadId(newThreads[0]?.id ?? '');
+      }
+
+      console.debug('[ChatInbox] daftar anak:', listAnak.length, 'threads:', newThreads.length);
+    } catch (err: any) {
+      console.error('[ChatInbox] loadData error:', err);
+      showToast(err?.message || 'Gagal memuat daftar perangkat anak', 'error');
+    } finally {
+      setLoading(false);
+      console.groupEnd();
     }
-  ]);
+  };
 
-  const activeThread = threads.find(t => t.id === activeThreadId) || threads[0];
+  useEffect(() => {
+    loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const activeThread = threads.find(t => t.id === activeThreadId) ?? null;
 
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputText.trim()) return;
+    if (!activeThread) {
+      showToast('Pilih perangkat anak terlebih dahulu', 'error');
+      return;
+    }
 
     const newMsg: ChatMessage = {
       id: `msg-${Date.now()}`,
@@ -124,9 +181,20 @@ export const ChatInboxPage: React.FC<ChatInboxPageProps> = ({ user, showToast })
 
     setInputText('');
     showToast('Pesan terkirim ke perangkat anak', 'success');
+    // PERINGATAN: Chat saat ini hanya state lokal (belum ada backend API endpoint chat realtime)
+    setTimeout(() => {
+      showToast(
+        '⚠️ Pesan tersimpan HANYA di session browser saat ini. Data chat & kuota akan hilang jika refresh halaman (butuh endpoint API backend + WebSocket untuk komunikasi riil).',
+        'warning'
+      );
+    }, 900);
   };
 
   const handleQuickGrant = (minutes: number) => {
+    if (!activeThread) {
+      showToast('Pilih perangkat anak terlebih dahulu', 'error');
+      return;
+    }
     const systemMsg: ChatMessage = {
       id: `grant-${Date.now()}`,
       sender: 'system',
@@ -145,6 +213,13 @@ export const ChatInboxPage: React.FC<ChatInboxPageProps> = ({ user, showToast })
     }));
 
     showToast(`Berhasil menambah waktu layar +${minutes} menit!`, 'success');
+    // PERINGATAN: Quick Grant hanya state lokal
+    setTimeout(() => {
+      showToast(
+        '⚠️ Penambahan kuota HANYA simulasi di browser saat ini (belum terkirim riil ke perangkat anak via API).',
+        'warning'
+      );
+    }, 700);
   };
 
   const filteredThreads = threads.filter(t => 
@@ -191,44 +266,76 @@ export const ChatInboxPage: React.FC<ChatInboxPageProps> = ({ user, showToast })
 
           {/* Device Threads */}
           <div className="flex-1 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800/60 custom-scrollbar">
-            {filteredThreads.map((thread) => {
-              const isActive = thread.id === activeThreadId;
-              return (
-                <button
-                  key={thread.id}
-                  type="button"
-                  onClick={() => {
-                    setActiveThreadId(thread.id);
-                    setMobileView('chat');
-                  }}
-                  className={`w-full text-left p-3.5 flex items-start gap-3 transition-colors cursor-pointer ${
-                    isActive
-                      ? 'bg-indigo-50/70 dark:bg-indigo-950/40 border-l-2 border-indigo-600'
-                      : 'hover:bg-slate-50 dark:hover:bg-slate-800/40'
-                  }`}
-                >
-                  <div className={`w-9 h-9 rounded-xl ${thread.avatarColor} text-white flex items-center justify-center font-medium text-xs shrink-0`}>
-                    {thread.childName.charAt(0)}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between">
-                      <span className="font-medium text-xs text-slate-900 dark:text-white truncate">
-                        {thread.childName}
-                      </span>
-                      <span className="text-[10px] text-slate-400 font-normal">{thread.lastTime}</span>
+            {loading ? (
+              <div className="p-8 text-center">
+                <Clock className="w-5 h-5 animate-spin mx-auto text-indigo-500 mb-2" />
+                <p className="text-[11px] text-slate-400 font-normal">Memuat daftar perangkat anak...</p>
+              </div>
+            ) : filteredThreads.length === 0 ? (
+              // ZERO HARDCODE: Empty state JUJUR jika user BELUM pairing perangkat
+              <div className="p-8 text-center">
+                <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 flex items-center justify-center mx-auto mb-3">
+                  <Smartphone className="w-6 h-6 text-indigo-600 dark:text-indigo-400" />
+                </div>
+                <p className="text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  Belum ada perangkat anak terhubung
+                </p>
+                <p className="text-[11px] font-normal text-slate-400 dark:text-slate-500 mb-3 max-w-[220px] mx-auto">
+                  Lakukan pairing perangkat terlebih dahulu di menu <span className="font-semibold text-indigo-600 dark:text-indigo-400">Kelola Anak</span> untuk mulai berkomunikasi & mengatur kuota.
+                </p>
+              </div>
+            ) : (
+              filteredThreads.map((thread) => {
+                const isActive = thread.id === activeThreadId;
+                const isOnline = thread.status === 'online';
+                const statusClass = isOnline ? 'text-emerald-500' : 'text-slate-400';
+                const statusLabel = thread.status === 'restricted'
+                  ? 'Dibatasi'
+                  : isOnline ? 'Online' : 'Offline';
+                return (
+                  <button
+                    key={thread.id}
+                    type="button"
+                    onClick={() => {
+                      setActiveThreadId(thread.id);
+                      setMobileView('chat');
+                    }}
+                    className={`w-full text-left p-3.5 flex items-start gap-3 transition-colors cursor-pointer ${
+                      isActive
+                        ? 'bg-indigo-50/70 dark:bg-indigo-950/40 border-l-2 border-indigo-600'
+                        : 'hover:bg-slate-50 dark:hover:bg-slate-800/40'
+                    }`}
+                  >
+                    <div className={`w-9 h-9 rounded-xl ${thread.avatarColor} text-white flex items-center justify-center font-medium text-xs shrink-0`}>
+                      {thread.childName.charAt(0) || 'A'}
                     </div>
-                    <div className="flex items-center gap-1.5 mt-0.5 text-[10px] text-slate-500 dark:text-slate-400">
-                      <Smartphone className="w-3 h-3 text-slate-400 shrink-0" />
-                      <span className="truncate">{thread.deviceModel}</span>
-                      <span className="text-emerald-500 font-normal shrink-0">• {thread.battery}%</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between">
+                        <span className="font-medium text-xs text-slate-900 dark:text-white truncate">
+                          {thread.childName}
+                        </span>
+                        <span className="text-[10px] text-slate-400 font-normal">{thread.lastTime}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 mt-0.5 text-[10px] text-slate-500 dark:text-slate-400 flex-wrap">
+                        <Smartphone className="w-3 h-3 text-slate-400 shrink-0" />
+                        <span className="truncate">{thread.deviceModel}</span>
+                        {thread.battery !== null ? (
+                          <span className="text-emerald-500 font-normal shrink-0">• {thread.battery}%</span>
+                        ) : (
+                          <span className={`font-normal shrink-0 flex items-center gap-1 ${statusClass}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${isOnline ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`} />
+                            {statusLabel}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-slate-600 dark:text-slate-300 truncate mt-1 font-normal">
+                        {thread.lastMessage}
+                      </p>
                     </div>
-                    <p className="text-xs text-slate-600 dark:text-slate-300 truncate mt-1 font-normal">
-                      {thread.lastMessage}
-                    </p>
-                  </div>
-                </button>
-              );
-            })}
+                  </button>
+                );
+              })
+            )}
           </div>
         </div>
 
@@ -254,18 +361,39 @@ export const ChatInboxPage: React.FC<ChatInboxPageProps> = ({ user, showToast })
                   </button>
 
                   <div className={`w-8 h-8 rounded-xl ${activeThread.avatarColor} text-white flex items-center justify-center font-medium text-xs shrink-0`}>
-                    {activeThread.childName.charAt(0)}
+                    {activeThread.childName.charAt(0) || 'A'}
                   </div>
                   <div className="min-w-0">
                     <h2 className="font-medium text-xs sm:text-sm text-slate-900 dark:text-white truncate">
                       {activeThread.childName}
                     </h2>
                     <div className="flex items-center gap-1.5 text-[10px] text-slate-500 dark:text-slate-400 font-normal">
-                      <span className="flex items-center gap-1 text-emerald-500 font-normal">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> Online
-                      </span>
-                      <span>•</span>
-                      <span className="truncate">{activeThread.deviceModel}</span>
+                      {(() => {
+                        const isOnline = activeThread.status === 'online';
+                        const restricted = activeThread.status === 'restricted';
+                        const dotClass = restricted
+                          ? 'bg-amber-500'
+                          : isOnline ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400';
+                        const txtClass = restricted
+                          ? 'text-amber-500'
+                          : isOnline ? 'text-emerald-500' : 'text-slate-400';
+                        const label = restricted ? 'Dibatasi' : (isOnline ? 'Online' : 'Offline');
+                        return (
+                          <>
+                            <span className={`flex items-center gap-1 font-normal ${txtClass}`}>
+                              <span className={`w-1.5 h-1.5 rounded-full ${dotClass}`} /> {label}
+                            </span>
+                            <span>•</span>
+                            <span className="truncate">{activeThread.deviceModel}</span>
+                            {activeThread.battery !== null && (
+                              <>
+                                <span>•</span>
+                                <span className="text-emerald-500">{activeThread.battery}%</span>
+                              </>
+                            )}
+                          </>
+                        );
+                      })()}
                     </div>
                   </div>
                 </div>
@@ -291,41 +419,56 @@ export const ChatInboxPage: React.FC<ChatInboxPageProps> = ({ user, showToast })
 
               {/* Chat Message List */}
               <div className="flex-1 p-3.5 sm:p-4 overflow-y-auto space-y-3 custom-scrollbar">
-                {activeThread.messages.map((msg) => (
-                  <div
-                    key={msg.id}
-                    className={`flex flex-col ${
-                      msg.sender === 'parent'
-                        ? 'items-end'
-                        : msg.sender === 'child'
-                        ? 'items-start'
-                        : 'items-center'
-                    }`}
-                  >
-                    {msg.sender === 'system' ? (
-                      <div className="my-2 px-3 py-1.5 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/50 rounded-xl text-amber-800 dark:text-amber-300 text-xs font-normal max-w-md text-center">
-                        {msg.text}
-                      </div>
-                    ) : (
-                      <div
-                        className={`max-w-[85%] sm:max-w-md p-3 rounded-2xl text-xs font-normal space-y-1 shadow-2xs ${
-                          msg.sender === 'parent'
-                            ? 'bg-indigo-600 text-white rounded-br-none'
-                            : 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 border border-slate-200/80 dark:border-slate-700 rounded-bl-none'
-                        }`}
-                      >
-                        <p className="leading-relaxed">{msg.text}</p>
-                        <span
-                          className={`block text-[9px] text-right font-normal ${
-                            msg.sender === 'parent' ? 'text-indigo-200' : 'text-slate-400'
+                {activeThread.messages.length === 0 ? (
+                  // ZERO HARDCODE: Empty state jujur BELUM ada riwayat pesan (bukan prompt dummy "minta perpanjangan waktu")
+                  <div className="h-full flex flex-col items-center justify-center text-center py-12 px-4">
+                    <div className="w-14 h-14 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 flex items-center justify-center mb-3">
+                      <MessageCircle className="w-7 h-7 text-indigo-600 dark:text-indigo-400" />
+                    </div>
+                    <p className="text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                      Belum ada percakapan dengan {activeThread.childName}
+                    </p>
+                    <p className="text-[11px] font-normal text-slate-400 dark:text-slate-500 max-w-xs">
+                      Ketik pesan di kolom bawah untuk memulai obrolan, atau gunakan tombol <span className="font-semibold">+15m / +30m</span> untuk memberikan tambahan kuota waktu layar dengan cepat.
+                    </p>
+                  </div>
+                ) : (
+                  activeThread.messages.map((msg) => (
+                    <div
+                      key={msg.id}
+                      className={`flex flex-col ${
+                        msg.sender === 'parent'
+                          ? 'items-end'
+                          : msg.sender === 'child'
+                          ? 'items-start'
+                          : 'items-center'
+                      }`}
+                    >
+                      {msg.sender === 'system' ? (
+                        <div className="my-2 px-3 py-1.5 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/50 rounded-xl text-amber-800 dark:text-amber-300 text-xs font-normal max-w-md text-center">
+                          {msg.text}
+                        </div>
+                      ) : (
+                        <div
+                          className={`max-w-[85%] sm:max-w-md p-3 rounded-2xl text-xs font-normal space-y-1 shadow-2xs ${
+                            msg.sender === 'parent'
+                              ? 'bg-indigo-600 text-white rounded-br-none'
+                              : 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 border border-slate-200/80 dark:border-slate-700 rounded-bl-none'
                           }`}
                         >
-                          {msg.timestamp}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                ))}
+                          <p className="leading-relaxed">{msg.text}</p>
+                          <span
+                            className={`block text-[9px] text-right font-normal ${
+                              msg.sender === 'parent' ? 'text-indigo-200' : 'text-slate-400'
+                            }`}
+                          >
+                            {msg.timestamp}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  ))
+                )}
               </div>
 
               {/* Chat Input Bar */}
@@ -347,8 +490,22 @@ export const ChatInboxPage: React.FC<ChatInboxPageProps> = ({ user, showToast })
               </form>
             </>
           ) : (
-            <div className="flex-1 flex items-center justify-center p-8 text-slate-400 text-xs font-normal">
-              Pilih perangkat anak untuk mulai melihat pesan.
+            <div className="flex-1 flex items-center justify-center p-8 text-center">
+              <div>
+                <div className="w-14 h-14 rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center mx-auto mb-3">
+                  <MessageSquare className="w-7 h-7 text-slate-400" />
+                </div>
+                <p className="text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">
+                  Pilih perangkat anak untuk mulai melihat pesan
+                </p>
+                <p className="text-[11px] font-normal text-slate-400 dark:text-slate-500 max-w-[260px]">
+                  {loading
+                    ? 'Menunggu daftar perangkat dimuat dari server...'
+                    : threads.length === 0
+                    ? 'Belum ada perangkat anak. Lakukan pairing terlebih dahulu.'
+                    : 'Tap salah satu perangkat di panel sebelah kiri untuk membuka percakapan.'}
+                </p>
+              </div>
             </div>
           )}
         </div>

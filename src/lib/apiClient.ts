@@ -6,7 +6,23 @@
 // ==========================================================================
 
 export const API_BASE_URL: string =
-  (import.meta as any).env?.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
+  (import.meta as any).env?.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000';
+
+// ==========================================================================
+// DEBUG LOG: Cetak BASE_URL setiap import module (untuk verifikasi production env)
+// - Jika PRODUCTION (same-domain) → API_BASE_URL harus = STRING KOSONG "" (origin relative)
+// - Jika DEV MODE → fallback ke localhost 127.0.0.1:8000
+// ==========================================================================
+console.log(
+  '%c[apiClient] init API_BASE_URL =',
+  'color:#8b5cf6;font-weight:700',
+  JSON.stringify(API_BASE_URL),
+  `(mode: ${API_BASE_URL === '' ? 'PRODUCTION SAME-ORIGIN (relative /api/v1/*)' : 'DEV LOCALHOST http://127.0.0.1:8000'})`,
+  '| PROD flag =',
+  import.meta.env.PROD,
+  '| DEV flag =',
+  import.meta.env.DEV
+);
 
 const API_PREFIX = '/api/v1';
 

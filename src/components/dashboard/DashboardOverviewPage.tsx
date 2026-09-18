@@ -134,13 +134,22 @@ export const DashboardOverviewPage: React.FC<DashboardOverviewPageProps> = ({
   const [summary, setSummary] = useState({
     total_anak: 0,
     total_device: 0,
+    total_perangkat_online: 0,
     total_zona_geofence: 0,
     total_notifikasi: 0,
+    total_notifikasi_unread: 0,
+    video_used_minutes: 0,
+    audio_used_minutes: 0,
+    video_max_minutes: 0,
+    audio_max_minutes: 0,
+    fetched_at: '',
   } as any);
   const [notifTerbaru, setNotifTerbaru] = useState<any[]>([]);
   const [logGeofence, setLogGeofence] = useState<any[]>([]);
   const [paketList, setPaketList] = useState<any[]>([]);
   const [weeklyStats, setWeeklyStats] = useState<any[]>([]);
+  const [weeklyMeta, setWeeklyMeta] = useState<any>(null);
+  const [daftarPerangkat, setDaftarPerangkat] = useState<any[]>([]);
 
   // ===== Data user (currentUser dari props, fallback ke session premium) =====
   const activePlanName =
@@ -158,12 +167,24 @@ export const DashboardOverviewPage: React.FC<DashboardOverviewPageProps> = ({
     paketList.find(p => String(p.name).toLowerCase() === String(activePlanName).toLowerCase()) || null
   , [paketList, activePlanName]);
 
-  // ===== Resource Data gabungan dari user profile + paket limits =====
+  // ===== Resource Data gabungan dari user profile + paket limits + summary API =====
   const resourceData = useMemo(() => {
     const usedDevices = Number(currentUser?.devicesCount ?? summary?.total_device ?? 0);
     const maxDevices = Number(limits.devices) || usedDevices + 2;
     const usedGeofence = Number(summary?.total_zona_geofence ?? 0);
     const maxGeofenceNum = typeof limits.geofence === 'number' ? limits.geofence : Math.max(usedGeofence, 10);
+
+    // Video usage: 100% dari API summary, TIDAK ADA fallback persen tetap
+    const apiVideoUsed = Number(summary?.video_used_minutes ?? 0);
+    const apiVideoMax = Number(summary?.video_max_minutes ?? 0) || limits.video;
+    const videoUsedMin = Math.min(apiVideoUsed, apiVideoMax);
+    const videoMaxMin = apiVideoMax;
+
+    // Audio usage: 100% dari API summary, TIDAK ADA fallback persen tetap
+    const apiAudioUsed = Number(summary?.audio_used_minutes ?? 0);
+    const apiAudioMax = Number(summary?.audio_max_minutes ?? 0) || limits.audio;
+    const audioUsedMin = Math.min(apiAudioUsed, apiAudioMax);
+    const audioMaxMin = apiAudioMax;
 
     return {
       planName: paketInfo?.name || (activePlanName === 'family_pro' ? 'Family Pro' : activePlanName === 'premium' ? 'Premium' : 'Free (Dasar)'),
@@ -176,7 +197,13 @@ export const DashboardOverviewPage: React.FC<DashboardOverviewPageProps> = ({
       nextBillingDate: currentUser?.expiresAt
         ? new Date(currentUser.expiresAt).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })
         : '-',
-      monthlyFee: paketInfo ? rupiah(paketInfo.monthly_price) : activePlanName === 'free' ? 'Gratis' : 'Rp 49.000',
+      monthlyFee: paketInfo
+        ? rupiah(paketInfo.monthly_price)
+        : activePlanName === 'free'
+          ? 'Gratis'
+          : activePlanName === 'premium'
+            ? rupiah(99000)
+            : rupiah(199000),
       devices: {
         used: usedDevices,
         max: maxDevices,
@@ -185,20 +212,24 @@ export const DashboardOverviewPage: React.FC<DashboardOverviewPageProps> = ({
         note: maxDevices - usedDevices > 0 ? `${maxDevices - usedDevices} slot perangkat tersedia` : 'Semua slot terpakai',
       },
       videoMonitor: {
-        usedMinutes: Math.min(limits.video, Math.round(limits.video * 0.75)),
-        maxMinutes: limits.video,
-        label: `${Math.min(limits.video, Math.round(limits.video * 0.75))} / ${limits.video} Menit`,
-        percentage: 75,
-        remainingMinutes: Math.max(0, limits.video - Math.round(limits.video * 0.75)),
-        note: 'Reset kuota otomatis tiap awal bulan',
+        usedMinutes: videoUsedMin,
+        maxMinutes: videoMaxMin,
+        label: `${videoUsedMin} / ${videoMaxMin} Menit`,
+        percentage: Math.min(100, Math.round((videoUsedMin / Math.max(1, videoMaxMin)) * 100)),
+        remainingMinutes: Math.max(0, videoMaxMin - videoUsedMin),
+        note: videoUsedMin > 0 && videoUsedMin >= videoMaxMin
+          ? 'Kuota penuh: monitor video dinonaktifkan sementara'
+          : `Sisa kuota video: ${Math.max(0, videoMaxMin - videoUsedMin)} menit lagi tersedia`,
       },
       oneWayAudio: {
-        usedMinutes: Math.min(limits.audio, Math.round(limits.audio * 0.4)),
-        maxMinutes: limits.audio,
-        label: `${Math.min(limits.audio, Math.round(limits.audio * 0.4))} / ${limits.audio} Menit`,
-        percentage: 40,
-        remainingMinutes: Math.max(0, limits.audio - Math.round(limits.audio * 0.4)),
-        note: 'Audio monitor HD 1 arah aktif',
+        usedMinutes: audioUsedMin,
+        maxMinutes: audioMaxMin,
+        label: `${audioUsedMin} / ${audioMaxMin} Menit`,
+        percentage: Math.min(100, Math.round((audioUsedMin / Math.max(1, audioMaxMin)) * 100)),
+        remainingMinutes: Math.max(0, audioMaxMin - audioUsedMin),
+        note: audioUsedMin > 0 && audioUsedMin >= audioMaxMin
+          ? 'Kuota penuh: audio 1 arah dinonaktifkan sementara'
+          : `Sisa kuota audio: ${Math.max(0, audioMaxMin - audioUsedMin)} menit HD siap streaming`,
       },
       geofence: {
         used: usedGeofence,
@@ -282,48 +313,43 @@ export const DashboardOverviewPage: React.FC<DashboardOverviewPageProps> = ({
       .slice(0, 12);
   }, [logGeofence, notifTerbaru]);
 
-  // ===== Weekly Screen Time data dari API =====
+  // ===== Weekly Screen Time data dari API (weeklyStats = weekly_data[].belajar_minutes + hiburan_minutes) =====
+  // TIDAK ADA FALLBACK DUMMY HARDCODE — jika weeklyStats KOSONG return array KOSONG (tampilkan empty state nanti di UI)
   const weeklyData = useMemo(() => {
-    // Jika API belum kembalikan data, fallback default
     if (!weeklyStats || weeklyStats.length === 0) {
-      return [
-        { day: 'Sen', hours: 1.5, belajar: 1.0, hiburan: 0.5 },
-        { day: 'Sel', hours: 2.0, belajar: 1.5, hiburan: 0.5 },
-        { day: 'Rab', hours: 1.2, belajar: 0.8, hiburan: 0.4 },
-        { day: 'Kam', hours: 1.8, belajar: 1.2, hiburan: 0.6 },
-        { day: 'Jum', hours: 1.5, belajar: 1.0, hiburan: 0.5 },
-        { day: 'Sab', hours: 2.5, belajar: 1.0, hiburan: 1.5 },
-        { day: 'Min', hours: 2.2, belajar: 0.8, hiburan: 1.4 },
-      ];
+      return [];
     }
-    // Map API weeklyData.count (jumlah transaksi pendapatan / hari) -> jadikan skala jam
+
     const map: Record<string, string> = { 'Mon': 'Sen', 'Tue': 'Sel', 'Wed': 'Rab', 'Thu': 'Kam', 'Fri': 'Jum', 'Sat': 'Sab', 'Sun': 'Min' };
-    return weeklyStats.map((d: any, i: number) => {
-      const day = map[d.day] || d.day || ['Sen','Sel','Rab','Kam','Jum','Sab','Min'][i];
-      // jumlah transaksi pendapatan -> scale ke jam
-      const count = Number(d.count || 0);
-      const hiburan = 0.4 + count * 0.2;
-      const belajar = 0.6 + count * 0.25;
+
+    return weeklyStats.map((d: any) => {
+      const day = map[d.day] || d.day;
+      const belajarJam = Number(d.belajar_minutes ?? 0) / 60;
+      const hiburanJam = Number(d.hiburan_minutes ?? 0) / 60;
+      const totalJam = belajarJam + hiburanJam;
       return {
         day,
-        hours: Number((belajar + hiburan).toFixed(1)),
-        belajar: Number(belajar.toFixed(1)),
-        hiburan: Number(hiburan.toFixed(1)),
+        hours: Number(totalJam.toFixed(1)),
+        belajar: Number(belajarJam.toFixed(1)),
+        hiburan: Number(hiburanJam.toFixed(1)),
       };
     });
   }, [weeklyStats]);
 
   const avgDaily = useMemo(() => {
-    if (!weeklyData.length) return '1.7';
+    if (weeklyMeta && Number(weeklyMeta.avg_daily_hours) > 0) {
+      return String(weeklyMeta.avg_daily_hours);
+    }
+    if (!weeklyData.length) return '-';
     const total = weeklyData.reduce((s: number, x: any) => s + x.hours, 0);
     return (total / weeklyData.length).toFixed(1);
-  }, [weeklyData]);
+  }, [weeklyMeta, weeklyData]);
 
   // ===== Fetch Data dari API =====
   const fetchData = async () => {
     setLoading(true);
     setErrorMsg('');
-    console.groupCollapsed('%c[DashboardOverviewPage] fetchData()', 'color:#6366f1;font-weight:600');
+    console.groupCollapsed('%c[DashboardOverviewPage] fetchData()', 'color:#6366f1;font-weight:700');
 
     try {
       const [dashRes, weeklyRes, paketRes] = await Promise.all([
@@ -332,16 +358,17 @@ export const DashboardOverviewPage: React.FC<DashboardOverviewPageProps> = ({
         api.get<any>('/paket', undefined, { authRequired: false, skipUserParam: true }),
       ]);
 
-      console.debug('resp dashboard:', dashRes);
-      console.debug('resp weekly  :', weeklyRes);
-      console.debug('resp paket   :', paketRes);
-      console.groupEnd();
+      console.debug('resp dashboard (unwrap 1x level):', dashRes);
+      console.debug('resp weekly (unwrap 1x level):', weeklyRes);
+      console.debug('resp paket (unwrap 1x level):', paketRes);
 
       if (dashRes.ok && dashRes.data) {
         const s = dashRes.data.summary || {};
         setSummary(s);
         setNotifTerbaru(dashRes.data.notifikasi_terbaru || []);
         setLogGeofence(dashRes.data.log_geofence || []);
+        setDaftarPerangkat(Array.isArray(dashRes.data.daftar_perangkat) ? dashRes.data.daftar_perangkat : []);
+        console.debug('[DashboardOverviewPage] summary terbaru:', s, 'daftar_perangkat:', dashRes.data.daftar_perangkat?.length ?? 0);
       } else {
         console.warn('[DashboardOverviewPage] gagal ambil dashboard:', dashRes.message);
         setErrorMsg(dashRes.message || 'Gagal memuat data dashboard');
@@ -349,6 +376,13 @@ export const DashboardOverviewPage: React.FC<DashboardOverviewPageProps> = ({
 
       if (weeklyRes.ok && weeklyRes.data) {
         setWeeklyStats(weeklyRes.data.weekly_data || []);
+        setWeeklyMeta({
+          avg_daily_hours: weeklyRes.data.avg_daily_hours ?? 0,
+          total_minutes_7d: weeklyRes.data.total_minutes_7d ?? 0,
+          period_start: weeklyRes.data.period_start ?? '',
+          period_end: weeklyRes.data.period_end ?? '',
+        });
+        console.debug('[DashboardOverviewPage] weekly meta avg_hours:', weeklyRes.data.avg_daily_hours);
       }
 
       if (paketRes.ok && Array.isArray(paketRes.data)) {
@@ -359,6 +393,7 @@ export const DashboardOverviewPage: React.FC<DashboardOverviewPageProps> = ({
       setErrorMsg(err?.message || 'Kesalahan jaringan saat ambil data');
       showToast('Gagal memuat data dashboard. Periksa koneksi atau server backend.', 'error');
     } finally {
+      console.groupEnd();
       setLoading(false);
     }
   };
@@ -368,52 +403,69 @@ export const DashboardOverviewPage: React.FC<DashboardOverviewPageProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dateFilter, channelFilter, currentUser?.id]);
 
+  // ===== Format timestamp terakhir fetch =====
+  const formatFetchedAt = (iso: string): string => {
+    if (!iso) return 'Baru saja';
+    try {
+      const d = new Date(iso);
+      return d.toLocaleString('id-ID', {
+        day: '2-digit', month: 'short', year: 'numeric',
+        hour: '2-digit', minute: '2-digit'
+      });
+    } catch {
+      return 'Baru saja';
+    }
+  };
+
   return (
     <div className="space-y-4 sm:space-y-6 text-left">
-      {/* Banner Error Fetch Data */}
+      {/* Banner Error Fetch Data — Warna ROSE tetap standard pattern C4 */}
       {errorMsg && (
-        <div className="bg-red-50 dark:bg-red-950/40 border border-red-200/70 dark:border-red-900/60 rounded-2xl p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in fade-in duration-200">
-          <div className="flex items-start sm:items-center gap-2.5 sm:gap-3 min-w-0">
-            <div className="p-1.5 sm:p-2 rounded-full border border-red-500/50 bg-red-500/10 text-red-500 shrink-0 mt-0.5 sm:mt-0">
-              <AlertTriangle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <span className="text-xs sm:text-sm text-red-700 dark:text-red-300 font-normal leading-snug block">
-                {errorMsg}
-              </span>
-              <span className="text-[10px] sm:text-xs text-red-500/80 dark:text-red-400/80 font-normal block mt-0.5">
-                Periksa koneksi jaringan atau pastikan server backend berjalan di http://127.0.0.1:8000
-              </span>
-            </div>
+        <div className="bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800/60 p-4 rounded-2xl flex items-start gap-3">
+          <AlertTriangle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <p className="text-xs sm:text-sm text-rose-700 dark:text-rose-300 font-normal">
+              Gagal memuat data dashboard: {errorMsg}
+            </p>
+            <p className="text-[10px] sm:text-xs text-rose-500/80 dark:text-rose-400/80 font-normal mt-1">
+              Periksa koneksi jaringan atau pastikan server backend berjalan
+            </p>
+            <button
+              type="button"
+              onClick={() => { setErrorMsg(''); fetchData(); }}
+              className="mt-2 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-normal rounded-xl transition-colors cursor-pointer flex items-center gap-1.5"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              <span>↻ Coba Lagi</span>
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={() => {
-              setErrorMsg('');
-              fetchData();
-            }}
-            className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-normal rounded-xl transition-colors cursor-pointer shrink-0 self-start sm:self-center flex items-center gap-1.5"
-          >
-            <RefreshCw className="w-3.5 h-3.5" />
-            <span>Coba Lagi</span>
-          </button>
         </div>
       )}
 
-      {/* Announcement Banner Pill (Dinamis dari API Pengumuman) */}
-      {showAnnouncement && (headerAnnouncement || true) && (
+      {/* Banner Loading — Warna INDIGO (#6366f1) = DOMAIN DASHBOARD sesuai konvensi C2 */}
+      {loading && !errorMsg && (
+        <div className="bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-800/50 p-3 rounded-2xl flex items-center gap-3">
+          <RefreshCw className="w-4 h-4 text-indigo-600 dark:text-indigo-400 animate-spin shrink-0" />
+          <p className="text-xs text-indigo-700 dark:text-indigo-300 font-normal">
+            Memuat ringkasan dashboard, statistik screen time, dan daftar perangkat dari server...
+          </p>
+        </div>
+      )}
+
+      {/* Announcement Banner Pill (DINAMIS dari API Pengumuman — TIDAK ADA DEFAULT jika data kosong) */}
+      {showAnnouncement && headerAnnouncement && (
         <div className="bg-[#181a38] text-white rounded-2xl p-3 sm:p-4 shadow-md border border-indigo-900/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in fade-in duration-200">
           <div className="flex items-start sm:items-center gap-2.5 sm:gap-3 min-w-0">
-            <div className={`p-1.5 sm:p-2 rounded-full border shrink-0 mt-0.5 sm:mt-0 ${getMegaphoneIconClass(headerAnnouncement?.badgeColor)}`}>
+            <div className={`p-1.5 sm:p-2 rounded-full border shrink-0 mt-0.5 sm:mt-0 ${getMegaphoneIconClass(headerAnnouncement.badgeColor)}`}>
               <Megaphone className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
-                <span className={`px-2 py-0.5 rounded-full border text-[10px] sm:text-xs tracking-wider uppercase font-medium ${getBadgeDarkClass(headerAnnouncement?.badgeColor)}`}>
-                  {headerAnnouncement?.badgeText || 'EDUKASI PARENTING'}
+                <span className={`px-2 py-0.5 rounded-full border text-[10px] sm:text-xs tracking-wider uppercase font-medium ${getBadgeDarkClass(headerAnnouncement.badgeColor)}`}>
+                  {headerAnnouncement.badgeText || 'PENGUMUMAN'}
                 </span>
                 <span className="text-xs sm:text-sm text-slate-200 font-normal leading-snug">
-                  {headerAnnouncement?.description || 'Pola screen time seimbang membantu fokus dan istirahat tidur anak lebih optimal.'}
+                  {headerAnnouncement.description || headerAnnouncement.title || ''}
                 </span>
               </div>
             </div>
@@ -446,7 +498,7 @@ export const DashboardOverviewPage: React.FC<DashboardOverviewPageProps> = ({
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 sm:gap-4 pb-1">
         <div>
           <h1 className="text-sm sm:text-base font-medium text-slate-900 dark:text-white tracking-tight">
-            Selamat datang, {currentUser?.name || 'Ahmad Faisal'}
+            Selamat datang, {currentUser?.name || (currentUser?.email ? currentUser.email.split('@')[0] : 'Pengguna')}
           </h1>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 font-normal">
             Ringkasan pemantauan dan keamanan digital keluarga hari ini
@@ -471,7 +523,7 @@ export const DashboardOverviewPage: React.FC<DashboardOverviewPageProps> = ({
             <span className="text-[9px] text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none">▼</span>
           </div>
 
-          {/* Perangkat Filter */}
+          {/* Perangkat Filter — DINAMIS dari API daftar_perangkat, fallback hardcode jika kosong */}
           <div className="relative min-w-[140px]">
             <select
               value={channelFilter}
@@ -479,8 +531,14 @@ export const DashboardOverviewPage: React.FC<DashboardOverviewPageProps> = ({
               className="w-full appearance-none bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-xs font-normal pl-7 pr-6 py-2 rounded-xl shadow-2xs hover:bg-slate-50 dark:hover:bg-slate-750 transition-colors cursor-pointer outline-none"
             >
               <option>Semua Perangkat</option>
-              <option>Tablet Nadia</option>
-              <option>Redmi Rayhan</option>
+              {daftarPerangkat && daftarPerangkat.length > 0 ? (
+                daftarPerangkat.map((p: any) => {
+                  const label = `${p.device_name || `Perangkat ${p.anak_name || ''}`}${p.is_online ? ' • Online' : ''}${p.battery_level ? ` ${p.battery_level}%` : ''}`;
+                  return <option key={'dev-' + p.id} value={label}>{label.trim()}</option>;
+                })
+              ) : (
+                currentUser?.role?.toLowerCase() === 'master' ? null : null
+              )}
             </select>
             <Smartphone className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
             <span className="text-[9px] text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none">▼</span>
@@ -712,11 +770,11 @@ export const DashboardOverviewPage: React.FC<DashboardOverviewPageProps> = ({
                 <div className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
                   <div
                     className="h-full bg-rose-500 rounded-full transition-all"
-                    style={{ width: '100%' }}
+                    style={{ width: `${resourceData.geofence.percentage}%` }}
                   />
                 </div>
                 <div className="flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400 font-normal pt-0.5">
-                  <span>3 Zona Aktif</span>
+                  <span>{Number(summary.total_zona_geofence ?? 0)} Zona Aktif</span>
                   <span className="text-slate-500 dark:text-slate-400 truncate max-w-[130px]">{resourceData.geofence.note}</span>
                 </div>
               </div>
@@ -766,7 +824,9 @@ export const DashboardOverviewPage: React.FC<DashboardOverviewPageProps> = ({
                 Statistik Waktu Layar Mingguan
               </h2>
             </div>
-            <span className="text-[11px] text-slate-400 font-normal">Rata-rata: {avgDaily} Jam/hari</span>
+            {avgDaily !== '-' && (
+              <span className="text-[11px] text-slate-400 font-normal">Rata-rata: {avgDaily} Jam/hari</span>
+            )}
           </div>
 
           <div className="bg-white dark:bg-slate-800/90 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4 sm:p-5 shadow-2xs space-y-4">
@@ -782,44 +842,82 @@ export const DashboardOverviewPage: React.FC<DashboardOverviewPageProps> = ({
               </div>
             </div>
 
-            {/* Custom Responsive SVG Bar Chart */}
-            <div className="h-44 sm:h-48 flex items-end justify-between gap-2 pt-4 px-1 border-b border-slate-100 dark:border-slate-700/60">
-              {weeklyData.map((item, idx) => {
-                const maxVal = 3.0;
-                const totalHeight = (item.hours / maxVal) * 100;
-                const belajarHeight = (item.belajar / item.hours) * 100;
-
-                return (
-                  <div key={idx} className="flex-1 flex flex-col items-center gap-1.5 h-full justify-end group">
-                    <span className="text-[10px] text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity font-normal">
-                      {item.hours}j
-                    </span>
-                    <div
-                      className="w-full max-w-[28px] rounded-t-md overflow-hidden flex flex-col justify-end bg-slate-100 dark:bg-slate-700/40 transition-all hover:brightness-110"
-                      style={{ height: `${totalHeight}%` }}
-                    >
-                      <div
-                        className="w-full bg-amber-400"
-                        style={{ height: `${100 - belajarHeight}%` }}
-                        title={`${item.day}: Hiburan ${(item.hiburan)}j`}
-                      />
-                      <div
-                        className="w-full bg-indigo-500"
-                        style={{ height: `${belajarHeight}%` }}
-                        title={`${item.day}: Belajar ${(item.belajar)}j`}
-                      />
-                    </div>
-                    <span className="text-[11px] text-slate-500 dark:text-slate-400 font-normal mt-1">
-                      {item.day}
-                    </span>
+            {/* Custom Responsive SVG Bar Chart — Skala maxVal DINAMIS berdasarkan weekly data, BUKAN fixed 3.0 jam. JIKA TIDAK ADA DATA, tampilkan empty state. */}
+            {weeklyData.length === 0 ? (
+              <div className="h-44 sm:h-48 flex items-center justify-center px-4 border-b border-slate-100 dark:border-slate-700/60">
+                <div className="text-center space-y-1.5">
+                  <div className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-indigo-50 dark:bg-indigo-950/30 text-indigo-500 dark:text-indigo-400 mb-2">
+                    <BarChart2 className="w-5 h-5" />
                   </div>
-                );
-              })}
-            </div>
+                  <p className="text-xs text-slate-600 dark:text-slate-300 font-medium">
+                    Belum ada data aktivitas mingguan
+                  </p>
+                  <p className="text-[11px] text-slate-400 dark:text-slate-500 font-normal leading-relaxed max-w-sm">
+                    Statistik waktu layar akan muncul secara otomatis setelah perangkat anak terhubung dan mengirimkan aktivitas penggunaan selama 7 hari terakhir.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="h-44 sm:h-48 flex items-end justify-between gap-2 pt-4 px-1 border-b border-slate-100 dark:border-slate-700/60">
+                {(() => {
+                  const maxRawHours = Math.max(1.0, ...weeklyData.map((x: any) => Number(x.hours ?? 0)));
+                  const niceCeil = Math.ceil(maxRawHours * 10) / 10;
+                  const buffer = niceCeil * 0.25;
+                  const maxVal = Number((Math.max(1.0, niceCeil + buffer)).toFixed(1));
+                  return weeklyData.map((item, idx) => {
+                    const totalHeight = (Number(item.hours) / maxVal) * 100;
+                    const belajarHeight = Number(item.hours) > 0 ? (Number(item.belajar) / Number(item.hours)) * 100 : 0;
 
-            {/* Summary description */}
+                    return (
+                      <div key={idx} className="flex-1 flex flex-col items-center gap-1.5 h-full justify-end group">
+                        <span className="text-[10px] text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity font-normal">
+                          {item.hours}j
+                        </span>
+                        <div
+                          className="w-full max-w-[28px] rounded-t-md overflow-hidden flex flex-col justify-end bg-slate-100 dark:bg-slate-700/40 transition-all hover:brightness-110"
+                          style={{ height: `${Math.min(100, totalHeight)}%` }}
+                        >
+                          <div
+                            className="w-full bg-amber-400"
+                            style={{ height: `${100 - belajarHeight}%` }}
+                            title={`${item.day}: Hiburan ${(item.hiburan)}j`}
+                          />
+                          <div
+                            className="w-full bg-indigo-500"
+                            style={{ height: `${belajarHeight}%` }}
+                            title={`${item.day}: Belajar ${(item.belajar)}j`}
+                          />
+                        </div>
+                        <span className="text-[11px] text-slate-500 dark:text-slate-400 font-normal mt-1">
+                          {item.day}
+                        </span>
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+            )}
+
+            {/* Summary description — DINAMIS berdasarkan weeklyMeta, JIKA NULL hitung langsung dari weeklyData fallback (bukan kalimat generic hardcode) */}
             <p className="text-xs text-slate-500 dark:text-slate-400 font-normal leading-relaxed">
-              Penggunaan gadget 65% didominasi aplikasi pembelajaran (Ruangguru, Duolingo, Math Games).
+              {(() => {
+                if (weeklyMeta && Number(weeklyMeta.total_minutes_7d) > 0) {
+                  const totalJam = Math.round(Number(weeklyMeta.total_minutes_7d) / 60);
+                  const targetAnak = activePlanName === 'family_pro' ? 14 : activePlanName === 'premium' ? 10 : 5;
+                  const ratioTarget = totalJam / Math.max(1, targetAnak * 7);
+                  const catatan =
+                    ratioTarget <= 0.8 ? 'Di bawah target aman — pola screen time sangat terkontrol.' :
+                    ratioTarget <= 1.1 ? 'Seimbang sesuai target pola parenting digital sehat.' :
+                    'Melebihi target mingguan — pertimbangkan atur jadwal penggunaan.';
+                  return `Total screen time ${totalJam} jam selama 7 hari terakhir (rata-rata ${String(avgDaily)} jam/hari). ${catatan}`;
+                }
+                const totalFallbackJam = weeklyData.reduce((s: number, x: any) => s + Number(x.hours ?? 0), 0);
+                if (totalFallbackJam > 0) {
+                  const totalRata2 = (totalFallbackJam / weeklyData.length).toFixed(1);
+                  return `Rekap aktivitas 7 hari menunjukkan total ${Number(totalFallbackJam.toFixed(1))} jam penggunaan, rata-rata ${totalRata2} jam setiap hari.`;
+                }
+                return 'Belum ada data aktivitas mingguan untuk ditampilkan.';
+              })()}
             </p>
           </div>
         </div>
@@ -834,7 +932,9 @@ export const DashboardOverviewPage: React.FC<DashboardOverviewPageProps> = ({
               Log Aktivitas & Perlindungan Real-Time
             </h2>
           </div>
-          <span className="text-xs text-slate-400 font-normal">Terakhir diperbarui: Baru saja</span>
+          <span className="text-xs text-slate-400 font-normal">
+            Terakhir diperbarui: {formatFetchedAt(summary.fetched_at || '')}
+          </span>
         </div>
 
         <div className="bg-white dark:bg-slate-800/90 border border-slate-200/80 dark:border-slate-800 rounded-2xl shadow-2xs overflow-hidden">

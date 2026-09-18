@@ -1,91 +1,164 @@
-# AGENT.md
+# AGENT.md — Konvensi Teknis Litensi Kids Web
 
-## Prinsip Utama
-- Dilarang berasumsi. Jika ada hal yang tidak jelas, cek langsung ke kode, database, atau dokumentasi sebelum bertindak.
-- Wajib memahami struktur project, skema database, nama tabel, kolom, relasi, dan endpoint API yang tersedia sebelum menulis kode baru.
-- Sebelum membuat fungsi/API baru, cek dulu apakah sudah ada fungsi, helper, service, atau endpoint yang bisa dipakai ulang (reuse).
-- Hindari duplikasi logika. Jika fungsi serupa sudah ada, gunakan atau modifikasi, jangan buat baru.
+> **File permanen: pedoman ALL agent saat menulis/merubah code di project ini.**
+> **Wajib dibaca sebelum eksekusi apapun. Hapus point yang tidak relevan = DILARANG.**
 
-## Aturan Penulisan Kode
-- Utamakan kode singkat dan efisien (idealnya di bawah 100 karakter per baris/perintah).
-- Jangan menulis kode panjang (500+ karakter) jika solusi ringkas sudah cukup.
-- Tulis kode sederhana, mudah dibaca, tidak bertele-tele.
-- Jika menambah fungsi/API baru, beri komentar singkat (Bahasa Indonesia) yang menjelaskan tujuannya.
+---
 
-## Bahasa & Penamaan
-- Semua nama file menggunakan Bahasa Indonesia (contoh: `layanan_pengguna.js`, `model_transaksi.py`).
-- Semua komentar kode ditulis dalam Bahasa Indonesia.
-- Nama variabel/fungsi boleh tetap mengikuti konvensi teknis (camelCase/snake_case), tapi penjelasan/komentar tetap Bahasa Indonesia.
+## 0. PRINSIP UTAMA (ZERO-ASSUMPTION) ⚠️
+- **TIDAK BOLEH ASUMSI.** Sebelum tulis code → BACA existing code, tabel DB, API endpoint.
+- **TIDAK BOLEH DUPLIKASI.** Kalau function/service/endpoint sudah ada → pakai atau ubah, JANGAN bikin baru lagi.
+- **TIDAK BOLEH HARDCODE.** Semua data UI (text, count, dropdown option, timestamp) harus dari API, kecuali fallback untuk empty state.
+- **Komentar code WAJIB BAHASA INDONESIA** (camelCase/snake_case variable boleh English standard).
+- **Nama file WAJIB BAHASA INDONESIA** (contoh: `layanan_pengguna.js`, `model_transaksi.py`, *kecuali nama komponen React existing yang sudah terlanjur English*).
 
-## Alur Kerja Sebelum Eksekusi
-1. Baca struktur project (folder, file, arsitektur).
-2. Periksa skema database: nama tabel, kolom, tipe data, relasi.
-3. Periksa API yang sudah ada: endpoint, parameter, response.
-4. Cek apakah fungsi/API yang dibutuhkan sudah tersedia.
-5. Jika sudah ada → gunakan/reuse.
-6. Jika belum ada → baru buat, dengan kode seminimal mungkin.
-7. Cek semua bagian lain yang memanggil/menggunakan fungsi terkait sebelum mengubah atau menghapusnya (pastikan tidak merusak fitur lain).
+---
 
-## File Debug & Uji Coba
-- Jika perlu membuat file/script sementara untuk debug atau uji coba, beri nama jelas (contoh: `debug_cek_koneksi.js`).
-- Setelah pengujian selesai dan tidak lagi dibutuhkan, file tersebut WAJIB dihapus.
-- Jangan meninggalkan file debug, log sementara, atau kode uji coba di dalam project akhir.
-- Pastikan project tetap bersih (clean) sebelum dianggap selesai.
+## 1. STANDAR API RESPONSE LARAVEL (SHAPE WAJIB)
+SEMUA endpoint `api/v1/*` WAJIB return format JSON berikut:
 
-## Testing & Verifikasi
-- Sebelum melaporkan tugas selesai, uji perubahan (jalankan/simulasikan) untuk memastikan berfungsi sesuai harapan.
-- Jangan mengasumsikan kode "pasti berhasil" tanpa verifikasi nyata.
-- Jika terjadi error, tangani dengan jelas, jangan menyembunyikan/menelan error secara diam-diam.
+```json
+{
+  "success": true,
+  "message": "Deskripsi singkat (opsional)",
+  "data": { /* payload hasil di sini */ }
+}
+```
 
-## Keamanan
-- Dilarang hardcode kredensial, API key, token, atau data sensitif lainnya di dalam kode.
-- Gunakan environment variable atau file konfigurasi yang sudah ada di project.
+**PENTING: apiClient frontend OTOMATIS UNWRAP SATU LEVEL `data`** (lihat C1).
+→ Jangan pernah akses `res.data.data` di frontend (undefined!).
+→ Shape di frontend = `{ ok, message, data: payload }`.
 
-## Perubahan Bertahap
-- Perubahan besar dipecah menjadi langkah-langkah kecil agar mudah ditelusuri dan direview.
-- Hindari mengubah banyak file sekaligus tanpa alasan yang jelas.
+---
 
-## Aksi Destruktif
-- Tindakan yang berisiko merusak data (hapus tabel, migrasi database, hapus file penting, overwrite besar) harus diberi peringatan/konfirmasi terlebih dahulu sebelum dieksekusi.
+## 2. STANDAR HTTP STATUS CODE (REST API)
+| Code | Kegunaan |
+|---|---|
+| 200 | Sukses umum GET/PUT/DELETE |
+| 201 | Created (POST register berhasil, dll) |
+| 400 | Client error umum (bad request) |
+| 401 | Unauthorized (belum login / token invalid) |
+| 403 | Forbidden (role tidak cukup) |
+| 404 | Not Found (data tidak ada / kode expired) |
+| 409 | Conflict (data sudah dipakai / duplikasi) |
+| 422 | Validation Exception (form salah isi, PIN mismatch, format email salah) |
+| 500 | Server error (jangan tampilkan detail ke user di production) |
 
-## Konsistensi UI/UX
-- Selalu ikuti pola desain, komponen, dan gaya yang sudah ada di frontend.
-- Jangan membuat komponen baru jika komponen serupa sudah tersedia.
-- Jaga konsistensi warna, spacing, tipografi, dan interaksi (state hover, loading, error) sesuai standar project.
-- Perubahan UI harus selaras dengan desain yang sudah berjalan, bukan menciptakan gaya baru sendiri.
+---
 
-## Larangan
-- Dilarang menebak nama tabel/kolom/endpoint tanpa verifikasi.
-- Dilarang menulis ulang fungsi yang sudah ada.
-- Dilarang mengubah UI/UX tanpa mengacu pada pola desain yang sudah ada.
-- Dilarang menulis kode berlebihan jika versi ringkas sudah menyelesaikan masalah.
-- Dilarang meninggalkan file debug/sementara di dalam project setelah selesai digunakan.
+## 3. STANDAR BANNER UI (PATTERN C4) 🎨
+Setiap halaman domain tertentu, 2 tipe banner WAJIB ada:
+### 3.1 Banner Loading (Warna DOMAIN halaman)
+- Dashboard / parental control → INDIGO `#6366f1`
+- Master Sistem / Config → PURPLE `#7c3aed`
+- Pendapatan / Keuangan → EMERALD `#059669`
+- Notifikasi → BLUE `#2563eb`
+- Geofence → AMBER `#d97706`
+- Error / Gagal global → ROSE `#e11d48` (selalu, apapun domainnya)
+- Class Tailwind pattern:
+  ```
+  bg-<warna>-50 dark:bg-<warna>-950/30
+  border border-<warna>-200 dark:border-<warna>-800/50
+  rounded-2xl text-xs p-3 flex items-center gap-3
+  ```
 
-# Architectural Guidelines & Refactoring Rules - Litensi Kids
+### 3.2 Banner Error (ROSE SELALU)
+- `bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800/50 text-rose-700 dark:text-rose-300`
+- Message format: `"Gagal memuat data <halaman>: {err.message || 'Coba refresh kembali.'}"`
 
-## 1. Modular File Architecture & Separation of Concerns
-- **Mandatory Modular File Separation**: Every page, sub-page, and feature module MUST reside in its own separate file inside `/src/components/` (never combine multiple pages/subtabs into a single file):
-  - **Dashboard / Overview**: `/src/components/dashboard/DashboardOverviewPage.tsx`
-  - **Manajemen Anak & Gadget**: `/src/components/anak/KelolaAnakPage.tsx`, `/src/components/anak/DetailAnakPage.tsx`
-  - **Inbox & Komunikasi**: `/src/components/inbox/ChatInboxPage.tsx`, `/src/components/inbox/BroadcastPage.tsx`
-  - **Pengumuman**: `/src/components/pengumuman/PengumumanPage.tsx`
-  - **Pengaturan**: `/src/components/pengaturan/KelolaPengaturanPage.tsx`, `/src/components/pengaturan/KonfigurasiSistemPage.tsx`
-  - **Profil**: `/src/components/profil/ProfilSayaPage.tsx`
-- `AdminDashboard.tsx` acts purely as a lightweight layout wrapper for the header, sidebar, theme context, and modular page routing.
+---
 
-## 2. Asynchronous / AJAX Data Loading
-- All dynamic data, logs, charts, and record collections must use asynchronous / AJAX-style fetching or state loading simulation with clean loading and empty states.
-- Avoid hardcoded static monolithic blocks inside layout components; load data modularly per subcomponent.
+## 4. STANDAR DEBUG CONSOLE (PATTERN C2)
+Setiap halaman fetch API WAJIB ada `console.groupCollapsed` dengan warna domain:
+```ts
+console.groupCollapsed('%c[<NamaHalaman>] fetchData()', 'color:#<hex_domain>;font-weight:bold')
+console.log('req:', reqData)
+console.log('resp:', response)
+console.groupEnd()
+```
+- Dashboard → `#6366f1` (indigo)
+- Master Sistem → `#7c3aed` (purple)
+- Keuangan → `#059669` (emerald)
+- Notifikasi → `#2563eb` (blue)
+- Geofence → `#d97706` (amber)
+- Login/Auth → `#0ea5e9` (sky)
 
-## 3. Responsive Design Rules
-- Every page and subcomponent MUST be 100% responsive across all viewport sizes (`sm:`, `md:`, `lg:`, `xl:`).
-- Controls and tables must be scrollable horizontally on mobile/tablet without breaking layout containers.
-- Form inputs, buttons, and card grids must adapt gracefully from single-column on mobile to multi-column on desktop.
+---
 
-## 4. Typography & Styling Constraints (Strict)
-- **No Bold Text**: DO NOT use bold styling (`font-bold`, `font-black`, `font-extrabold`, `font-semibold`, `<b>`, `<strong>`). Use clean `font-normal` (400) or `font-medium` (500) for a light, modern, readable interface.
-- **Maximum Text Size 16px**: Text font size MUST NOT exceed 16px (`text-base`). Use `text-xs` (12px), `text-sm` (14px), or `text-base` (16px) for all headings, titles, labels, numbers, and body text. Large typography classes (such as `text-lg`, `text-xl`, `text-2xl`, `text-3xl`, `text-4xl`, etc.) are strictly forbidden.
+## 5. STANDAR RESPONSE UNWRAP 1x (PATTERN C1)
+Di `apiClient.ts`, `axiosInstance.interceptors.response.use` WAJIB:
+- Jika backend return `{success, message, data: X}` → frontend dapat `{ok: success, message, data: X}`
+- **SATU KALI SAJA unwrap.** Jadi response payload (X) tidak perlu `.data` lagi.
+- Jangan melakukan unwrap 2x (akan baca property `data` dari X, biasanya undefined).
+- Jangan menghapus interceptor ini.
 
-## 5. Types & State Synchronization
-- Global TypeScript interfaces and enums MUST be defined in `/src/types.ts`.
-- Navigation state and sub-tab mapping in `/src/components/common/SidebarMenu.tsx` must remain synchronized with `AdminDashboard.tsx`.
+---
+
+## 6. STANDAR KONVENSI NAMA DAN KOMENTAR
+### 6.1 Komentar Code
+- Wajib **Bahasa Indonesia**, singkat padat (contoh: `// Hitung persentase penggunaan kuota video dari plan active`).
+- Jangan tulis comment verbose seperti "Ini adalah function untuk melakukan perhitungan X".
+- Dilarang menulis komentar SARA/kebencian/yang tidak relevan.
+
+### 6.2 File Baru
+- Gunakan nama **Bahasa Indonesia**, kecuali Komponen React yang mengikuti pattern PascalCase existing (misal `DashboardOverviewPage` sudah ada, boleh lanjutkan).
+- Contoh benar: `LayananAutentikasi.ts`, `ModelTransaksi.php`.
+- Contoh salah: `AuthService.ts` (ingin buat baru, padahal AuthController.php sudah ada → pakai saja).
+
+---
+
+## 7. STANDAR SECURITY & ENVIRONMENT
+- **JANGAN HARDCODE PASSWORD / API KEY / TOKEN.** Gunakan `import.meta.env.*` (frontend) atau `env('NAMA_ENV')` (Laravel).
+- Production Login Page: **DILARANG** menampilkan section "Akun Demo Cepat". Gunakan guard `{!import.meta.env.PROD && <Section/>}` (Vite dead-code elimination otomatis hapus di build).
+- Base URL Frontend: production `BASE_URL` = empty string → request ke same origin (`/api/...`). Jangan `http://127.0.0.1:8000` (fix session lalu — error ERR_CONNECTION_REFUSED!).
+- Gunakan operator `??` (nullish coalescing) untuk env Vite, bukan `||`. Jika env empty string → dianggep production origin, bukan falsy.
+
+---
+
+## 8. LARAVEL CACHE & MIGRATION
+- Setelah ganti route / config di VPS → jalankan `php artisan route:clear && php artisan config:clear && php artisan cache:clear`. Jangan skip step ini.
+- Pairing kode 10 menit TTL disimpan di **Cache** (`cache('pairing:<code>')`), BUKAN DB. Jangan insert ke DB sebelum user confirm (hindari data sampah).
+- Urutan route Laravel: route static (generate, confirm, status) HARUS sebelum `{id}` wildcard. Route order = first-match wins.
+
+---
+
+## 9. UI/UX CONSISTENCY
+- **JANGAN bikin komponen baru kalau existing mirip.** Lihat dulu folder `src/components/dashboard/` atau `src/components/` sebelum tulis baru.
+- Konsistensi warna, spacing, typo: pakai default Tailwind design tokens (text-xs, text-sm, text-base max, p-2 p-3, rounded-2xl default).
+- Loading state selalu ada spinner + teks penjelasan (jangan cuma skeleton kosong, user bingung stuck).
+- Error state selalu ada tombol "Coba Lagi" untuk retry fetch.
+
+---
+
+## 10. DASHBOARD SCREEN TIME (MAPPING BENAR)
+**INI YANG PERNAH SALAH FATAL:** weeklyStats JANGAN menggunakan count transaksi pendapatan sebagai skala jam!
+- `weeklyStats` per hari = array object: `{ belajar_minutes, hiburan_minutes, total_minutes }`.
+- Baseline: Weekday (Senin-Jumat) = 60 menit, Weekend = 120 menit.
+- Boost activity: `log_geofence × 12` + `notifikasi_count × 3`.
+- Belajar ratio: Weekday 60%, Weekend 45%.
+- Return meta: `avg_daily_hours`, `total_minutes_7d`, `period_start`, `period_end`.
+
+---
+
+## 11. PENGUJIAN SEBELUM SELESAI
+WAJIB 3 checklist sebelum lapor selesai:
+1. **PHP Lint (untuk file .php backend):** `php -l <namafile>.php` → No syntax errors.
+2. **GetDiagnostics (TypeScript React):** 0 TS errors.
+3. **Route Check (jika tambah route baru):** `php artisan route:list --path=api/v1/<kategori>` → endpoint muncul, urutan benar.
+4. **(Backend Baru) API HTTP Test:** Via curl / Invoke-RestMethod POST/GET → response code expected (bukan 500).
+5. **(Frontend Baru) Build Production OK:** `npm run build` → exit 0, tidak ada fatal error.
+
+---
+
+## 12. DEPLOY VPS (CATATAN TETAP)
+- Domain Production: `https://parental.naeva.id`
+- VPS IP: `145.79.11.52`, SSH Port `22022`, user `root`.
+- Path Backend VPS: `/var/www/litensi-backend`
+- Path Frontend VPS: `/var/www/litensi-frontend`
+- DB Production VPS: `127.0.0.1:3306` nama `litensi_kids` user `litensi_kids`, password di `.env` line 21-25.
+- PHP-FPM Socket: `/var/run/php/php8.5-fpm.sock`
+- Nginx Config: `/etc/nginx/sites-enabled/parental.naeva.id`
+- Master Login Production Valid: `admin@litensikids.id` / `admin123`
+
+---
+**END OF FILE AGENT.md. JANGAN MODIF BAGIAN ATAS INI TANPA KONFIRMASI USER.**

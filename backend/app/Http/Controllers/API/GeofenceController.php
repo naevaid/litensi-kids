@@ -13,7 +13,15 @@ class GeofenceController extends Controller
     // Daftar zona geofence berdasarkan user
     public function index(Request $request): JsonResponse
     {
-        $userId = $request->input('user_id', 1);
+        // ZERO TOLERANCE PRIVASI: TIDAK BOLEH ADA default user_id = 1 (bocor data user lain!)
+        $userId = $request->input('user_id');
+        if (empty($userId) || !is_numeric($userId)) {
+            return response()->json([
+                'success' => true,
+                'data' => [],
+            ]);
+        }
+        $userId = (int) $userId;
 
         $zona = ZonaGeofence::where('user_id', $userId)
             ->with('user')
@@ -99,10 +107,21 @@ class GeofenceController extends Controller
     {
         $zonaId = $request->input('zona_id');
         $limit = $request->input('limit', 50);
+        // ZERO TOLERANCE PRIVASI: Log geofence juga harus filter via zonaGeofence.user_id
+        $userId = $request->input('user_id');
+        $userIdInt = null;
+        if (!empty($userId) && is_numeric($userId)) {
+            $userIdInt = (int) $userId;
+        }
 
         $logs = LogGeofence::when($zonaId, function ($q) use ($zonaId) {
-            $q->where('zona_geofence_id', $zonaId);
-        })
+                $q->where('zona_geofence_id', $zonaId);
+            })
+            ->when($userIdInt, function ($q) use ($userIdInt) {
+                $q->whereHas('zonaGeofence', function ($subQ) use ($userIdInt) {
+                    $subQ->where('user_id', $userIdInt);
+                });
+            })
             ->with('zonaGeofence')
             ->orderBy('timestamp', 'desc')
             ->limit($limit)

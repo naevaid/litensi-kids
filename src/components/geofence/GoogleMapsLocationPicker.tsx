@@ -109,16 +109,52 @@ export const GoogleMapsLocationPicker: React.FC<GoogleMapsLocationPickerProps> =
   height = '320px'
 }) => {
   const apiKey = ((import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY as string) || '';
-  const mapId = ((import.meta as any).env?.VITE_GOOGLE_MAPS_MAP_ID as string) || 'PICKER_MAP_ID';
+  const mapId = ((import.meta as any).env?.VITE_GOOGLE_MAPS_MAP_ID as string) || '';
 
-  const [currentLat, setCurrentLat] = useState<number>(initialLat || -6.2445);
-  const [currentLng, setCurrentLng] = useState<number>(initialLng || 106.8040);
+  // ZERO HARDCODE: JIKA initial 0,0 TIDAK BOLEH DI OVERRIDE JAKARTA MONAS.
+  // Solusi: Tengah Indonesia (-2.5, 118) sebagai default netral, lalu coba geolocate user.
+  const isInitialZero = Number(initialLat) === 0 && Number(initialLng) === 0;
+  const INITIAL_DEFAULT_FALLBACK = { lat: -2.5, lng: 118 };
+  const resolveInitialCoords = (): { lat: number; lng: number } => {
+    if (Number(initialLat) === 0 && Number(initialLng) === 0) return INITIAL_DEFAULT_FALLBACK;
+    return { lat: Number(initialLat || INITIAL_DEFAULT_FALLBACK.lat), lng: Number(initialLng || INITIAL_DEFAULT_FALLBACK.lng) };
+  };
+
+  const [currentLat, setCurrentLat] = useState<number>(() => resolveInitialCoords().lat);
+  const [currentLng, setCurrentLng] = useState<number>(() => resolveInitialCoords().lng);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [isSearching, setIsSearching] = useState<boolean>(false);
   const [mapTypeId, setMapTypeId] = useState<'roadmap' | 'hybrid'>('roadmap');
   const [targetCenter, setTargetCenter] = useState<{ lat: number; lng: number } | null>(null);
   const [addressPreview, setAddressPreview] = useState<string>(initialAddress || '');
   const [isLocating, setIsLocating] = useState<boolean>(false);
+
+  // Jika initial = 0,0 → otomatis coba geolocate user saat component mount
+  useEffect(() => {
+    if (!isInitialZero || typeof navigator === 'undefined' || !navigator.geolocation) return;
+    let cancelled = false;
+    setIsLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        if (cancelled) return;
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        setCurrentLat(lat);
+        setCurrentLng(lng);
+        setTargetCenter({ lat, lng });
+        handleReverseGeocode(lat, lng);
+        setIsLocating(false);
+      },
+      (_err) => {
+        if (cancelled) return;
+        setIsLocating(false);
+        // User tidak izinkan / error → tetap default Tengah Indonesia (jangan override ke Jakarta)
+      },
+      { enableHighAccuracy: true, timeout: 7000, maximumAge: 60_000 }
+    );
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isInitialZero]);
 
   // Reverse geocode helper using native Maps API Geocoder or fallback
   const handleReverseGeocode = useCallback((lat: number, lng: number) => {

@@ -1,16 +1,81 @@
-import React, { useState } from 'react';
-import { Megaphone, Send, Smartphone, Sparkles, Clock, ShieldCheck, AlertCircle } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Megaphone, Send, Smartphone, Sparkles, Clock, ShieldCheck, AlertCircle, Users } from 'lucide-react';
 import { User as UserType } from '../../types';
+import { api, getSessionUser } from '../../lib/apiClient';
 
 interface BroadcastPageProps {
   user?: UserType;
   showToast: (msg: string, type?: 'success' | 'error' | 'warning' | 'info') => void;
 }
 
+// Interface + helper mapping daftar anak dari API /anak
+interface ChildOptionItem {
+  id: string;
+  nama_lengkap: string;
+  nama_panggilan: string;
+  device_model: string | null;
+  os_version: string | null;
+  label: string;
+}
+const mapApiAnakToChildOption = (db: any): ChildOptionItem | null => {
+  if (!db) return null;
+  const id = String(db.id ?? '');
+  const namaLengkap = String(db.nama_lengkap ?? '').trim();
+  const namaPanggilan = String(db.nama_panggilan ?? '').trim();
+  const deviceModel = db.device_model ? String(db.device_model) : null;
+  const osVersion = db.os_version ? String(db.os_version) : null;
+  const displayName = namaPanggilan || namaLengkap || `Anak #${id}`;
+  const deviceStr = deviceModel ? deviceModel : (osVersion ? `Android ${osVersion}` : 'Perangkat');
+  return {
+    id,
+    nama_lengkap: namaLengkap,
+    nama_panggilan: namaPanggilan,
+    device_model: deviceModel,
+    os_version: osVersion,
+    label: `${displayName} (${deviceStr})`,
+  };
+};
+
 export const BroadcastPage: React.FC<BroadcastPageProps> = ({ user, showToast }) => {
+  const sessUser = getSessionUser();
+  const uid = sessUser?.id ? String(sessUser.id) : '';
+
+  const [loading, setLoading] = useState(true);
+  const [children, setChildren] = useState<ChildOptionItem[]>([]);
   const [targetGroup, setTargetGroup] = useState('all');
   const [urgency, setUrgency] = useState<'normal' | 'penting' | 'kunci_layar'>('normal');
   const [message, setMessage] = useState('');
+
+  // Load daftar anak untuk dropdown target perangkat
+  const loadData = async () => {
+    console.groupCollapsed('%c[Broadcast] loadData GET /anak', 'color:#6366f1;font-weight:700');
+    try {
+      setLoading(true);
+      const resAnak = uid
+        ? await api.get('/anak', { params: { user_id: uid } })
+        : Promise.resolve({ ok: true, data: [] } as any);
+
+      const anakRawArray: any[] = Array.isArray(resAnak?.data)
+        ? resAnak.data
+        : (resAnak?.data?.list ?? resAnak?.data?.data ?? []);
+      const listAnak = anakRawArray
+        .map(mapApiAnakToChildOption)
+        .filter(Boolean) as ChildOptionItem[];
+      setChildren(listAnak);
+      console.debug('[Broadcast] daftar anak:', listAnak.length);
+    } catch (err: any) {
+      console.error('[Broadcast] loadData error:', err);
+      showToast(err?.message || 'Gagal memuat daftar perangkat anak', 'error');
+    } finally {
+      setLoading(false);
+      console.groupEnd();
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleSendBroadcast = (e: React.FormEvent) => {
     e.preventDefault();
@@ -18,9 +83,24 @@ export const BroadcastPage: React.FC<BroadcastPageProps> = ({ user, showToast })
       showToast('Mohon tuliskan isi pesan broadcast', 'error');
       return;
     }
+    if (targetGroup !== 'all' && !children.find(c => c.id === targetGroup)) {
+      showToast('Target perangkat tidak valid. Pilih perangkat yang tersedia atau pilih Semua.', 'error');
+      return;
+    }
+    if (children.length === 0) {
+      showToast('Tidak ada perangkat anak yang terdaftar. Lakukan pairing terlebih dahulu.', 'warning');
+      return;
+    }
 
-    showToast('Pesan broadcast berhasil dikirim ke seluruh perangkat anak!', 'success');
+    showToast('Pesan broadcast berhasil dikirim ke perangkat anak!', 'success');
     setMessage('');
+    // PERINGATAN: Broadcast saat ini hanya state lokal (belum ada API endpoint broadcast real ke perangkat)
+    setTimeout(() => {
+      showToast(
+        '⚠️ Pengiriman broadcast HANYA simulasi di browser saat ini. Belum terkirim riil ke perangkat anak (butuh endpoint API backend untuk push notifikasi FCM/OneSignal ke companion app).',
+        'warning'
+      );
+    }, 900);
   };
 
   return (
@@ -49,11 +129,33 @@ export const BroadcastPage: React.FC<BroadcastPageProps> = ({ user, showToast })
                 value={targetGroup}
                 onChange={(e) => setTargetGroup(e.target.value)}
                 className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-normal outline-none text-slate-800 dark:text-slate-100 focus:border-indigo-500"
+                disabled={loading || children.length === 0}
               >
-                <option value="all">Semua Perangkat Anak (2 Gadget Aktif)</option>
-                <option value="nadia">Tablet Nadia (Samsung Tab A8)</option>
-                <option value="rayhan">Ponsel Rayhan (Xiaomi Redmi 10)</option>
+                {children.length === 0 ? (
+                  loading ? (
+                    <option value="all">Memuat daftar perangkat...</option>
+                  ) : (
+                    <option value="all" disabled>Belum ada perangkat anak terdaftar</option>
+                  )
+                ) : (
+                  <>
+                    <option value="all">
+                      Semua Perangkat Anak ({children.length} Gadget Aktif)
+                    </option>
+                    {children.map(anak => (
+                      <option key={anak.id} value={anak.id}>
+                        {anak.label}
+                      </option>
+                    ))}
+                  </>
+                )}
               </select>
+              {!loading && children.length === 0 && (
+                <div className="flex items-start gap-1.5 mt-1.5 text-[10px] text-amber-700 dark:text-amber-400 font-normal">
+                  <Users className="w-3 h-3 shrink-0 mt-0.5" />
+                  <span>Lakukan pairing perangkat di menu <span className="font-semibold">Kelola Anak</span> terlebih dahulu.</span>
+                </div>
+              )}
             </div>
 
             <div className="space-y-1.5">

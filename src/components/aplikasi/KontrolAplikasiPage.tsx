@@ -8,17 +8,20 @@ import {
 } from 'lucide-react';
 import { Pagination } from '../common/Pagination';
 
+import { api, getSessionUser } from '../../lib/apiClient';
+
 export interface AppRuleItem {
   id: string;
   appName: string;
   packageName: string;
   category: 'game' | 'social' | 'video' | 'education' | 'chat' | 'utility';
   icon: string;
+  childId?: string;
   childName: string;
   deviceName: string;
   status: 'allowed' | 'limited' | 'blocked';
-  dailyLimitMinutes: number; // e.g. 45 min
-  usedTodayMinutes: number; // e.g. 30 min
+  dailyLimitMinutes: number;
+  usedTodayMinutes: number;
   scheduleMode: 'all_day' | 'study_time_blocked' | 'bedtime_blocked' | 'custom';
   allowWeekendExtra: boolean;
   weekendExtraMinutes: number;
@@ -37,6 +40,7 @@ export interface AppCategoryLimit {
 
 export interface AppAccessRequest {
   id: string;
+  childId?: string;
   childName: string;
   appName: string;
   category: string;
@@ -46,285 +50,38 @@ export interface AppAccessRequest {
   status: 'pending' | 'approved' | 'rejected';
 }
 
+export interface ChildOptionItem {
+  id: string;
+  name: string;
+  deviceName: string;
+  age?: number;
+}
+
 interface KontrolAplikasiPageProps {
   showToast: (msg: string, type?: 'success' | 'error' | 'warning' | 'info') => void;
 }
 
-const INITIAL_APPS: AppRuleItem[] = [
-  {
-    id: 'app-1',
-    appName: 'YouTube Kids',
-    packageName: 'com.google.android.apps.youtube.kids',
-    category: 'video',
-    icon: 'https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?q=80&w=128&auto=format&fit=crop',
-    childName: 'Rayhan',
-    deviceName: 'Xiaomi Redmi 10',
-    status: 'limited',
-    dailyLimitMinutes: 45,
-    usedTodayMinutes: 30,
-    scheduleMode: 'bedtime_blocked',
-    allowWeekendExtra: true,
-    weekendExtraMinutes: 30,
-    lastUsedTime: '15 menit lalu'
-  },
-  {
-    id: 'app-2',
-    appName: 'Ruangguru',
-    packageName: 'com.ruangguru.livestudents',
-    category: 'education',
-    icon: 'https://images.unsplash.com/photo-1503676260728-1c00da094a0b?q=80&w=128&auto=format&fit=crop',
-    childName: 'Nadia',
-    deviceName: 'Tablet Samsung Tab A8',
-    status: 'allowed',
-    dailyLimitMinutes: 0, // Tanpa batas
-    usedTodayMinutes: 50,
-    scheduleMode: 'all_day',
-    allowWeekendExtra: false,
-    weekendExtraMinutes: 0,
-    lastUsedTime: '10 menit lalu'
-  },
-  {
-    id: 'app-3',
-    appName: 'Roblox',
-    packageName: 'com.roblox.client',
-    category: 'game',
-    icon: 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?q=80&w=128&auto=format&fit=crop',
-    childName: 'Rayhan',
-    deviceName: 'Xiaomi Redmi 10',
-    status: 'blocked',
-    dailyLimitMinutes: 30,
-    usedTodayMinutes: 0,
-    scheduleMode: 'study_time_blocked',
-    allowWeekendExtra: true,
-    weekendExtraMinutes: 45,
-    lastUsedTime: 'Kemarin, 16:20'
-  },
-  {
-    id: 'app-4',
-    appName: 'Duolingo',
-    packageName: 'com.duolingo',
-    category: 'education',
-    icon: 'https://images.unsplash.com/photo-1546410531-bb4caa6b424d?q=80&w=128&auto=format&fit=crop',
-    childName: 'Nadia',
-    deviceName: 'Tablet Samsung Tab A8',
-    status: 'allowed',
-    dailyLimitMinutes: 0,
-    usedTodayMinutes: 25,
-    scheduleMode: 'all_day',
-    allowWeekendExtra: false,
-    weekendExtraMinutes: 0,
-    lastUsedTime: '1 jam lalu'
-  },
-  {
-    id: 'app-5',
-    appName: 'TikTok Lite',
-    packageName: 'com.zhiliaoapp.musically.go',
-    category: 'social',
-    icon: 'https://images.unsplash.com/photo-1611605698335-8b1569810432?q=80&w=128&auto=format&fit=crop',
-    childName: 'Nadia',
-    deviceName: 'Tablet Samsung Tab A8',
-    status: 'blocked',
-    dailyLimitMinutes: 0,
-    usedTodayMinutes: 0,
-    scheduleMode: 'bedtime_blocked',
-    allowWeekendExtra: false,
-    weekendExtraMinutes: 0,
-    lastUsedTime: 'Diblokir Total'
-  },
-  {
-    id: 'app-6',
-    appName: 'WhatsApp Messenger',
-    packageName: 'com.whatsapp',
-    category: 'chat',
-    icon: 'https://images.unsplash.com/photo-1614680376593-902f749f7ffc?q=80&w=128&auto=format&fit=crop',
-    childName: 'Nadia',
-    deviceName: 'Tablet Samsung Tab A8',
-    status: 'limited',
-    dailyLimitMinutes: 60,
-    usedTodayMinutes: 18,
-    scheduleMode: 'study_time_blocked',
-    allowWeekendExtra: false,
-    weekendExtraMinutes: 0,
-    lastUsedTime: '30 menit lalu'
-  },
-  {
-    id: 'app-7',
-    appName: 'Minecraft Pocket',
-    packageName: 'com.mojang.minecraftpe',
-    category: 'game',
-    icon: 'https://images.unsplash.com/photo-1607604276583-eef5d076aa5f?q=80&w=128&auto=format&fit=crop',
-    childName: 'Rayhan',
-    deviceName: 'Xiaomi Redmi 10',
-    status: 'limited',
-    dailyLimitMinutes: 40,
-    usedTodayMinutes: 20,
-    scheduleMode: 'study_time_blocked',
-    allowWeekendExtra: true,
-    weekendExtraMinutes: 30,
-    lastUsedTime: '2 jam lalu'
-  },
-  {
-    id: 'app-8',
-    appName: 'Math Kids Learning',
-    packageName: 'com.rvappstudios.math.kids',
-    category: 'education',
-    icon: 'https://images.unsplash.com/photo-1509228468518-180dd4864904?q=80&w=128&auto=format&fit=crop',
-    childName: 'Rayhan',
-    deviceName: 'Xiaomi Redmi 10',
-    status: 'allowed',
-    dailyLimitMinutes: 0,
-    usedTodayMinutes: 15,
-    scheduleMode: 'all_day',
-    allowWeekendExtra: false,
-    weekendExtraMinutes: 0,
-    lastUsedTime: '3 jam lalu'
-  },
-  {
-    id: 'app-9',
-    appName: 'Mobile Legends: Bang Bang',
-    packageName: 'com.mobile.legends',
-    category: 'game',
-    icon: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?q=80&w=128&auto=format&fit=crop',
-    childName: 'Rayhan',
-    deviceName: 'Xiaomi Redmi 10',
-    status: 'blocked',
-    dailyLimitMinutes: 30,
-    usedTodayMinutes: 0,
-    scheduleMode: 'study_time_blocked',
-    allowWeekendExtra: false,
-    weekendExtraMinutes: 0,
-    lastUsedTime: '3 hari lalu'
-  },
-  {
-    id: 'app-10',
-    appName: 'Spotify Kids & Music',
-    packageName: 'com.spotify.kids',
-    category: 'video',
-    icon: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?q=80&w=128&auto=format&fit=crop',
-    childName: 'Nadia',
-    deviceName: 'Tablet Samsung Tab A8',
-    status: 'limited',
-    dailyLimitMinutes: 60,
-    usedTodayMinutes: 35,
-    scheduleMode: 'bedtime_blocked',
-    allowWeekendExtra: true,
-    weekendExtraMinutes: 30,
-    lastUsedTime: '45 menit lalu'
-  },
-  {
-    id: 'app-11',
-    appName: 'Chess for Kids',
-    packageName: 'com.chess.kids',
-    category: 'education',
-    icon: 'https://images.unsplash.com/photo-1529699211952-734e80c4d42b?q=80&w=128&auto=format&fit=crop',
-    childName: 'Rayhan',
-    deviceName: 'Xiaomi Redmi 10',
-    status: 'allowed',
-    dailyLimitMinutes: 0,
-    usedTodayMinutes: 20,
-    scheduleMode: 'all_day',
-    allowWeekendExtra: false,
-    weekendExtraMinutes: 0,
-    lastUsedTime: '4 jam lalu'
-  },
-  {
-    id: 'app-12',
-    appName: 'Instagram',
-    packageName: 'com.instagram.android',
-    category: 'social',
-    icon: 'https://images.unsplash.com/photo-1611262588024-d12430b98920?q=80&w=128&auto=format&fit=crop',
-    childName: 'Nadia',
-    deviceName: 'Tablet Samsung Tab A8',
-    status: 'blocked',
-    dailyLimitMinutes: 0,
-    usedTodayMinutes: 0,
-    scheduleMode: 'bedtime_blocked',
-    allowWeekendExtra: false,
-    weekendExtraMinutes: 0,
-    lastUsedTime: 'Diblokir Permanen'
-  },
-  {
-    id: 'app-13',
-    appName: 'Google Classroom',
-    packageName: 'com.google.android.apps.classroom',
-    category: 'education',
-    icon: 'https://images.unsplash.com/photo-1588072432836-e10032774350?q=80&w=128&auto=format&fit=crop',
-    childName: 'Rayhan',
-    deviceName: 'Xiaomi Redmi 10',
-    status: 'allowed',
-    dailyLimitMinutes: 0,
-    usedTodayMinutes: 40,
-    scheduleMode: 'all_day',
-    allowWeekendExtra: false,
-    weekendExtraMinutes: 0,
-    lastUsedTime: '1 jam lalu'
-  },
-  {
-    id: 'app-14',
-    appName: 'Free Fire MAX',
-    packageName: 'com.dts.freefiremax',
-    category: 'game',
-    icon: 'https://images.unsplash.com/photo-1538481199705-c710c4e965fc?q=80&w=128&auto=format&fit=crop',
-    childName: 'Rayhan',
-    deviceName: 'Xiaomi Redmi 10',
-    status: 'blocked',
-    dailyLimitMinutes: 30,
-    usedTodayMinutes: 0,
-    scheduleMode: 'study_time_blocked',
-    allowWeekendExtra: false,
-    weekendExtraMinutes: 0,
-    lastUsedTime: '5 hari lalu'
-  },
-  {
-    id: 'app-15',
-    appName: 'ScratchJr Coding',
-    packageName: 'org.scratchjr.android',
-    category: 'education',
-    icon: 'https://images.unsplash.com/photo-1515879218367-8466d910aaa4?q=80&w=128&auto=format&fit=crop',
-    childName: 'Nadia',
-    deviceName: 'Tablet Samsung Tab A8',
-    status: 'allowed',
-    dailyLimitMinutes: 0,
-    usedTodayMinutes: 30,
-    scheduleMode: 'all_day',
-    allowWeekendExtra: true,
-    weekendExtraMinutes: 30,
-    lastUsedTime: '2 jam lalu'
-  }
-];
+const PLACEHOLDER_APP_ICON = '';
 
-const INITIAL_REQUESTS: AppAccessRequest[] = [
-  {
-    id: 'req-1',
-    childName: 'Rayhan',
-    appName: 'Roblox',
-    category: 'Game',
-    requestedAt: '10 menit lalu',
-    durationRequested: '+30 Menit',
-    reason: 'Ingin bermain bersama teman kelas sebentar setelah selesai PR.',
-    status: 'pending'
-  },
-  {
-    id: 'req-2',
-    childName: 'Nadia',
-    appName: 'YouTube Kids',
-    category: 'Video Edukasi',
-    requestedAt: '1 jam lalu',
-    durationRequested: '+45 Menit',
-    reason: 'Menonton tutorial melukis untuk tugas seni budaya.',
-    status: 'pending'
-  }
-];
+// Helper mapping response API /anak ke ChildOptionItem
+const mapApiAnakToChildOption = (db: any): ChildOptionItem => ({
+  id: String(db.id ?? `anak-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`),
+  name: db.name ?? String(db.id ?? 'Anak'),
+  deviceName: db.device_name ?? db.deviceName ?? 'Perangkat Belum Dinamai',
+  age: db.age ? Number(db.age) : undefined,
+});
 
 export const KontrolAplikasiPage: React.FC<KontrolAplikasiPageProps> = ({ showToast }) => {
   const [loading, setLoading] = useState(true);
   const [apps, setApps] = useState<AppRuleItem[]>([]);
   const [requests, setRequests] = useState<AppAccessRequest[]>([]);
   const [activeSubTab, setActiveSubTab] = useState<'daftar' | 'jadwal' | 'permintaan'>('daftar');
+  const [children, setChildren] = useState<ChildOptionItem[]>([]);
+  const [loadingChildren, setLoadingChildren] = useState(true);
 
   // Filters
   const [searchQuery, setSearchQuery] = useState('');
-  const [childFilter, setChildFilter] = useState<'all' | 'Nadia' | 'Rayhan'>('all');
+  const [childFilter, setChildFilter] = useState<string>('all');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'allowed' | 'limited' | 'blocked'>('all');
 
@@ -358,20 +115,50 @@ export const KontrolAplikasiPage: React.FC<KontrolAplikasiPageProps> = ({ showTo
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [newAppName, setNewAppName] = useState('');
   const [newAppCategory, setNewAppCategory] = useState<'game' | 'social' | 'video' | 'education' | 'chat'>('game');
-  const [newAppChild, setNewAppChild] = useState<'Nadia' | 'Rayhan'>('Rayhan');
+  const [newAppChild, setNewAppChild] = useState<string>('');
   const [newAppStatus, setNewAppStatus] = useState<'limited' | 'blocked'>('limited');
   const [newAppLimit, setNewAppLimit] = useState<number>(30);
 
-  // Simulate Asynchronous AJAX data load
+  // Load data awal (ZERO HARDCODE: real API daftar anak + state apps & requests kosong)
   useEffect(() => {
-    setLoading(true);
-    const timer = setTimeout(() => {
-      setApps(INITIAL_APPS);
-      setRequests(INITIAL_REQUESTS);
-      setLoading(false);
-    }, 400);
-    return () => clearTimeout(timer);
+    const loadInitial = async () => {
+      setLoading(true);
+      setLoadingChildren(true);
+      try {
+        const sessUser = getSessionUser();
+        if (sessUser?.id) {
+          try {
+            const resAnak = await api.get<any[]>('/anak');
+            if (resAnak?.ok && Array.isArray(resAnak.data)) {
+              const list = resAnak.data.map(mapApiAnakToChildOption).filter(Boolean) as ChildOptionItem[];
+              setChildren(list);
+              if (list.length > 0 && !newAppChild) {
+                setNewAppChild(String(list[0].id));
+              }
+            }
+          } catch (err) {
+            console.debug('[KontrolAplikasi] gagal load daftar anak (lanjut empty list):', err);
+          }
+        }
+      } finally {
+        setApps([]);
+        setRequests([]);
+        setLoadingChildren(false);
+        setLoading(false);
+      }
+    };
+    loadInitial();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Helper cari anak dari state children (berdasarkan id atau name fallback)
+  const getAnakTerpilih = (idOrName: string): ChildOptionItem | null => {
+    if (!idOrName) return null;
+    const byId = children.find(c => c.id === idOrName);
+    if (byId) return byId;
+    const byName = children.find(c => c.name === idOrName);
+    return byName || null;
+  };
 
   // Request Confirmation for Lock / Unlock Action
   const requestActionConfirmation = (app: AppRuleItem, actionType: 'buka' | 'kunci' | 'batasi') => {
@@ -461,15 +248,25 @@ export const KontrolAplikasiPage: React.FC<KontrolAplikasiPageProps> = ({ showTo
       showToast('Nama aplikasi tidak boleh kosong', 'warning');
       return;
     }
+    if (!newAppChild) {
+      showToast('Pilih anak untuk aturan aplikasi ini terlebih dahulu', 'warning');
+      return;
+    }
+
+    const anak = getAnakTerpilih(newAppChild);
+    const namaAnak = anak?.name ?? getSessionUser()?.name ?? 'Anak';
+    const namaPerangkat = anak?.deviceName ?? 'Perangkat Anak';
+    const anakId = anak?.id ?? newAppChild;
 
     const newApp: AppRuleItem = {
       id: `app-custom-${Date.now()}`,
       appName: newAppName.trim(),
       packageName: `com.custom.${newAppName.toLowerCase().replace(/\s+/g, '')}`,
       category: newAppCategory,
-      icon: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=128&auto=format&fit=crop',
-      childName: newAppChild,
-      deviceName: newAppChild === 'Nadia' ? 'Tablet Samsung Tab A8' : 'Xiaomi Redmi 10',
+      icon: PLACEHOLDER_APP_ICON,
+      childId: anakId,
+      childName: namaAnak,
+      deviceName: namaPerangkat,
       status: newAppStatus,
       dailyLimitMinutes: newAppStatus === 'limited' ? newAppLimit : 0,
       usedTodayMinutes: 0,
@@ -480,7 +277,7 @@ export const KontrolAplikasiPage: React.FC<KontrolAplikasiPageProps> = ({ showTo
     };
 
     setApps(prev => [newApp, ...prev]);
-    showToast(`Aturan untuk aplikasi ${newAppName} (${newAppChild} - ${newApp.deviceName}) berhasil ditambahkan!`, 'success');
+    showToast(`Aturan untuk aplikasi ${newAppName} (${namaAnak} - ${namaPerangkat}) berhasil ditambahkan!`, 'success');
     setIsAddModalOpen(false);
     setNewAppName('');
   };
@@ -509,7 +306,12 @@ export const KontrolAplikasiPage: React.FC<KontrolAplikasiPageProps> = ({ showTo
   const filteredApps = apps.filter(app => {
     const matchesSearch = app.appName.toLowerCase().includes(searchQuery.toLowerCase()) ||
                           app.packageName.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesChild = childFilter === 'all' || app.childName === childFilter;
+    const anakFilter = childFilter === 'all' ? null : getAnakTerpilih(childFilter);
+    const matchesChild = childFilter === 'all'
+      ? true
+      : anakFilter
+        ? (app.childId === anakFilter.id || app.childName === anakFilter.name)
+        : (app.childName === childFilter || app.childId === childFilter);
     const matchesCat = categoryFilter === 'all' || app.category === categoryFilter;
     const matchesStatus = statusFilter === 'all' || app.status === statusFilter;
     return matchesSearch && matchesChild && matchesCat && matchesStatus;
@@ -778,14 +580,22 @@ export const KontrolAplikasiPage: React.FC<KontrolAplikasiPageProps> = ({ showTo
               <select
                 value={childFilter}
                 onChange={(e) => {
-                  setChildFilter(e.target.value as any);
+                  setChildFilter(e.target.value);
                   setCurrentPage(1);
                 }}
                 className="px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-normal text-slate-700 dark:text-slate-300 focus:outline-hidden"
               >
                 <option value="all">Semua Anak</option>
-                <option value="Nadia">Nadia (Tablet Samsung Tab A8)</option>
-                <option value="Rayhan">Rayhan (Xiaomi Redmi 10)</option>
+                {children.length === 0 && !loadingChildren && (
+                  <option value="" disabled>
+                    Belum ada daftar anak (tambahkan dulu di Kelola Anak)
+                  </option>
+                )}
+                {children.map(anak => (
+                  <option key={`filter-anak-${anak.id}`} value={anak.id}>
+                    {anak.name} ({anak.deviceName || 'Perangkat'})
+                  </option>
+                ))}
               </select>
 
               {/* Filter Kategori */}
@@ -852,14 +662,28 @@ export const KontrolAplikasiPage: React.FC<KontrolAplikasiPageProps> = ({ showTo
                         {/* App Icon & Name */}
                         <td className="py-3.5 px-4">
                           <div className="flex items-center gap-3">
-                            <img
-                              src={app.icon}
-                              alt={app.appName}
-                              className="w-10 h-10 rounded-xl object-cover border border-slate-200 dark:border-slate-700 shrink-0"
-                              onError={(e) => {
-                                (e.currentTarget as HTMLElement).style.display = 'none';
-                              }}
-                            />
+                            {app.icon && String(app.icon).trim().length > 0 ? (
+                              <img
+                                src={app.icon}
+                                alt={app.appName}
+                                className="w-10 h-10 rounded-xl object-cover border border-slate-200 dark:border-slate-700 shrink-0"
+                                onError={(e) => {
+                                  const target = e.currentTarget;
+                                  target.style.display = 'none';
+                                  const parent = target.parentElement;
+                                  if (parent && !parent.querySelector('.app-icon-fallback')) {
+                                    const fallback = document.createElement('div');
+                                    fallback.className = 'app-icon-fallback w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-500 border border-indigo-100 dark:border-indigo-800/60 flex items-center justify-center shrink-0';
+                                    fallback.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M11 9h6M7 15h6M7 9h.01M17 15h.01"/></svg>';
+                                    parent.insertBefore(fallback, target);
+                                  }
+                                }}
+                              />
+                            ) : (
+                              <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-500 border border-indigo-100 dark:border-indigo-800/60 flex items-center justify-center shrink-0">
+                                <AppWindow className="w-5 h-5" />
+                              </div>
+                            )}
                             <div>
                               <div className="text-xs font-medium text-slate-900 dark:text-white flex items-center gap-2">
                                 <span>{app.appName}</span>
@@ -995,64 +819,23 @@ export const KontrolAplikasiPage: React.FC<KontrolAplikasiPageProps> = ({ showTo
 
       {/* SUBTAB 2: JADWAL BLOKIR RUTIN */}
       {activeSubTab === 'jadwal' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="bg-white dark:bg-slate-800/80 p-4 sm:p-5 rounded-2xl border border-slate-200/80 dark:border-slate-700/80 space-y-4">
-            <div className="flex items-center gap-2">
-              <div className="p-2 rounded-xl bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800/40">
-                <Clock className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-xs sm:text-sm font-medium text-slate-900 dark:text-white">
-                  Jadwal Jam Sekolah (07:00 - 14:00)
-                </h3>
-                <p className="text-xs font-normal text-slate-500 dark:text-slate-400">
-                  Otomatis kunci game, video, dan medsos saat jam belajar di sekolah.
-                </p>
-              </div>
-            </div>
-
-            <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-slate-700/60 text-xs">
-              <div className="flex items-center justify-between p-2.5 bg-slate-50 dark:bg-slate-900 rounded-xl">
-                <span className="text-slate-700 dark:text-slate-300 font-normal">Status Proteksi Jam Sekolah</span>
-                <span className="px-2 py-0.5 bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 font-medium rounded-md">
-                  Aktif (Senin - Jumat)
-                </span>
-              </div>
-              <div className="flex items-center justify-between p-2.5 bg-slate-50 dark:bg-slate-900 rounded-xl">
-                <span className="text-slate-700 dark:text-slate-300 font-normal">Aplikasi yang Dikecualikan</span>
-                <span className="text-slate-500 dark:text-slate-400 font-medium">Hanya Aplikasi Edukasi</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white dark:bg-slate-800/80 p-4 sm:p-5 rounded-2xl border border-slate-200/80 dark:border-slate-700/80 space-y-4">
-            <div className="flex items-center gap-2">
-              <div className="p-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800/40">
-                <Calendar className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-xs sm:text-sm font-medium text-slate-900 dark:text-white">
-                  Jadwal Jam Tidur Malam (21:00 - 06:00)
-                </h3>
-                <p className="text-xs font-normal text-slate-500 dark:text-slate-400">
-                  Kunci seluruh layar & aplikasi hiburan saat waktu istirahat malam.
-                </p>
-              </div>
-            </div>
-
-            <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-slate-700/60 text-xs">
-              <div className="flex items-center justify-between p-2.5 bg-slate-50 dark:bg-slate-900 rounded-xl">
-                <span className="text-slate-700 dark:text-slate-300 font-normal">Status Proteksi Jam Tidur</span>
-                <span className="px-2 py-0.5 bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 font-medium rounded-md">
-                  Aktif Setiap Hari
-                </span>
-              </div>
-              <div className="flex items-center justify-between p-2.5 bg-slate-50 dark:bg-slate-900 rounded-xl">
-                <span className="text-slate-700 dark:text-slate-300 font-normal">Panggilan Darurat Orang Tua</span>
-                <span className="text-emerald-600 dark:text-emerald-400 font-medium">Tetap Diizinkan</span>
-              </div>
-            </div>
-          </div>
+        <div className="bg-white dark:bg-slate-800/80 p-10 sm:p-14 rounded-2xl border border-slate-200/80 dark:border-slate-700/80 text-center">
+          <Calendar className="w-10 h-10 mx-auto text-slate-400 mb-3 opacity-60" />
+          <h3 className="text-sm font-medium text-slate-800 dark:text-slate-200 mb-1">
+            Belum ada jadwal blokir rutin
+          </h3>
+          <p className="text-xs font-normal text-slate-500 dark:text-slate-400 mb-5 max-w-md mx-auto">
+            Tambahkan jadwal untuk proteksi otomatis: kunci aplikasi hiburan saat jam sekolah, waktu istirahat tidur malam, atau jadwal khusus lainnya.
+          </p>
+          <button
+            type="button"
+            disabled
+            title="Fitur jadwal blokir rutin akan tersedia segera"
+            className="cursor-not-allowed px-4 py-2 text-xs font-medium bg-slate-100 dark:bg-slate-700 text-slate-400 dark:text-slate-500 rounded-xl border border-slate-200 dark:border-slate-600 inline-flex items-center gap-1.5"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Tambahkan Jadwal (Segera)
+          </button>
         </div>
       )}
 
@@ -1441,11 +1224,19 @@ export const KontrolAplikasiPage: React.FC<KontrolAplikasiPageProps> = ({ showTo
                   </label>
                   <select
                     value={newAppChild}
-                    onChange={(e) => setNewAppChild(e.target.value as any)}
+                    onChange={(e) => setNewAppChild(e.target.value)}
                     className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-normal text-slate-800 dark:text-slate-200"
                   >
-                    <option value="Rayhan">Rayhan (Xiaomi Redmi 10)</option>
-                    <option value="Nadia">Nadia (Tablet Samsung Tab A8)</option>
+                    {children.length === 0 && (
+                      <option value="" disabled>
+                        {loadingChildren ? 'Memuat daftar anak...' : 'Belum ada anak (tambahkan dulu)'}
+                      </option>
+                    )}
+                    {children.map(anak => (
+                      <option key={`modal-anak-${anak.id}`} value={anak.id}>
+                        {anak.name} ({anak.deviceName || 'Perangkat'})
+                      </option>
+                    ))}
                   </select>
                 </div>
               </div>

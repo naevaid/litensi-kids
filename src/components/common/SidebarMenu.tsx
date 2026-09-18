@@ -42,10 +42,12 @@ export const SUB_MENU_MAP: Record<string, SidebarSubMenuItem[]> = {
     { id: 'chat', label: 'Chat & Permintaan Waktu' },
     { id: 'broadcast', label: 'Pesan Broadcast' }
   ],
+  // Submenu Pengaturan Orang Tua: URUTAN BARU sesuai user request:
+  // 0 = Langganan Keluarga Saya (item pertama) → 1 = Hak Akses & Wali
+  // Submenu Proteksi Anak (id: konfigurasi) DIHAPUS PERMANEN sesuai permintaan user
   pengaturan: [
-    { id: 'konfigurasi', label: 'Proteksi Anak' },
-    { id: 'hak_akses', label: 'Hak Akses & Wali' },
-    { id: 'langganan_saya', label: 'Langganan Keluarga Saya' }
+    { id: 'langganan_saya', label: 'Langganan Keluarga Saya' },
+    { id: 'hak_akses', label: 'Hak Akses & Wali' }
   ]
 };
 

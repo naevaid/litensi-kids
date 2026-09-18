@@ -22,6 +22,7 @@ class PaketLangganan extends Model
         'monthly_price',
         'annual_price',
         'max_children_devices',
+        'max_children_devices_label',
         'location_tracking',
         'location_tracking_label',
         'app_restriction',
