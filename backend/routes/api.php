@@ -4,6 +4,7 @@ use App\Http\Controllers\API\AnakController;
 use App\Http\Controllers\API\AuthController;
 use App\Http\Controllers\API\DashboardController;
 use App\Http\Controllers\API\GeofenceController;
+use App\Http\Controllers\API\KontrolAplikasiController;
 use App\Http\Controllers\API\MasterPendapatanController;
 use App\Http\Controllers\API\MasterSistemController;
 use App\Http\Controllers\API\MasterUserController;
@@ -51,6 +52,33 @@ Route::prefix('v1')->group(function () {
         Route::post('/update', [ProfilController::class, 'updateProfil']);
         Route::post('/foto', [ProfilController::class, 'uploadFotoProfil']);
         Route::post('/foto/hapus', [ProfilController::class, 'hapusFotoProfil']);
+    });
+
+    // === Modul Kontrol Aplikasi (Aturan + Jadwal + Permintaan Akses) ===
+    // Urutan WAJIB: SEBELUM group anak (karena anak/{id} wildcard bisa match /aplikasi/aturan jika terbalik!)
+    Route::prefix('aplikasi')->group(function () {
+        // A. Aturan Aplikasi (6 endpoint)
+        Route::get('/aturan', [KontrolAplikasiController::class, 'indexAturan']);
+        Route::post('/aturan/bulk-kategori', [KontrolAplikasiController::class, 'bulkKategoriAturan']);
+        Route::post('/aturan', [KontrolAplikasiController::class, 'storeAturan']);
+        Route::get('/aturan/{id}', [KontrolAplikasiController::class, 'showAturan'])->whereNumber('id');
+        Route::put('/aturan/{id}', [KontrolAplikasiController::class, 'updateAturan'])->whereNumber('id');
+        Route::patch('/aturan/{id}', [KontrolAplikasiController::class, 'updateAturan'])->whereNumber('id');
+        Route::delete('/aturan/{id}', [KontrolAplikasiController::class, 'destroyAturan'])->whereNumber('id');
+
+        // B. Jadwal Blokir (6 endpoint)
+        Route::get('/jadwal', [KontrolAplikasiController::class, 'indexJadwal']);
+        Route::post('/jadwal', [KontrolAplikasiController::class, 'storeJadwal']);
+        Route::post('/jadwal/{id}/toggle', [KontrolAplikasiController::class, 'toggleJadwal'])->whereNumber('id');
+        Route::get('/jadwal/{id}', [KontrolAplikasiController::class, 'showJadwal'])->whereNumber('id');
+        Route::put('/jadwal/{id}', [KontrolAplikasiController::class, 'updateJadwal'])->whereNumber('id');
+        Route::patch('/jadwal/{id}', [KontrolAplikasiController::class, 'updateJadwal'])->whereNumber('id');
+        Route::delete('/jadwal/{id}', [KontrolAplikasiController::class, 'destroyJadwal'])->whereNumber('id');
+
+        // C. Permintaan Akses Aplikasi (3 endpoint)
+        Route::get('/permintaan', [KontrolAplikasiController::class, 'indexPermintaan']);
+        Route::post('/permintaan/{id}/approve', [KontrolAplikasiController::class, 'approvePermintaan'])->whereNumber('id');
+        Route::post('/permintaan/{id}/reject', [KontrolAplikasiController::class, 'rejectPermintaan'])->whereNumber('id');
     });
 
     // === Modul Kelola Anak (ProfilAnak) ===

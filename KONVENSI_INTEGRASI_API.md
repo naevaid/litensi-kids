@@ -10,7 +10,7 @@
 1. **Konvensi Dasar (Response Unwrap, Parameter, Session Auth)**
 2. **Daftar Semua Endpoint API (`/api/v1/*`) Per Modul — DETAIL (Parameter + Response Shape)**
 3. **Konvensi Router Laravel (Urutan Route + Regex Wildcard + Defensif Typed Arg)**
-4. **Reference Semua Model & Kolom Utama (9 Tabel: fillable + cast + relasi)**
+4. **Reference Semua Model & Kolom Utama (12 TABEL: fillable + cast + relasi)**
 5. **Standard Controller Response Template (Gagal / Sukses / Error 401/404/422)**
 6. **Konvensi Frontend (Debug Color, Mapper snake→camel, Banner UI Error & Loading, dll)**
 7. **Checklist Integrasi Halaman Baru Step-by-Step**
@@ -258,6 +258,34 @@ interface ApiResponse<T> {
 
 ---
 
+### 2.13 MODUL KONTROL APLIKASI (Aturan Aplikasi + Jadwal Blokir + Permintaan Akses)
+> **Urutan Route KRITIS**: Group `prefix('aplikasi')` **DIDETEK SEBELUM** group `prefix('anak')` (yang memiliki wildcard `/anak/{id}`)! Jika terbalik → `/aplikasi/aturan` URL match ke wildcard `anak/{id}` → `AnakController@show("aturan")` dengan typed arg int → TypeError HTTP 500! Source rute: [routes/api.php L57-L82](file:///d:/litensi-kids/backend/routes/api.php#L57-L82).
+>
+> **Gatekeeping ZERO HARDCODE PRIVASI (WAJIB BACA!)**: SEMUA endpoint pada modul ini **MEMILIKI filter ownership via `whereHas('profilAnak', fn($q) => $q->where('user_id', $userId))`**. **TIDAK BOLEH ADA default user_id = 1 atau apapun!** Jika user_id kosong / tidak valid → return list kosong `[]` JUJUR atau HTTP 404 Not Found untuk detail row milik user lain (data orang tua TIDAK BOLEH bocor!).
+
+| # | HTTP Method | Endpoint | Auth | Param | Response res.data | Source Controller |
+|---|---|---|---|---|---|---|
+| **A. ATRIBUT APLIKASI (6 Endpoint)** | | | | | | |
+| KA1 | GET | `/aplikasi/aturan` (List Semua Aturan per User) | ✅ | `user_id (wajib int; kosong → [])` <br> Opsional filter: `profil_anak_id? (hanya anak tertentu)` | `AturanAplikasiObject[]` (with `profilAnak` + `jadwalBlokir[]` relation, order updated_at desc) | [KontrolAplikasi L56-L70](file:///d:/litensi-kids/backend/app/Http/Controllers/API/KontrolAplikasiController.php#L56-L70) |
+| KA2 | GET | `/aplikasi/aturan/{id}` (Detail Aturan + Jadwal Terkait) | ✅ | `user_id (wajib)`, `id (numeric whereNumber)` — **GATE CHECK**: jika aturan ini milik `profil_anak.user_id != user_id` → **HTTP 404** (privasi!) | `AturanAplikasiObject single (with profilAnak + jadwalBlokir relation)` | [KontrolAplikasi L72-L89](file:///d:/litensi-kids/backend/app/Http/Controllers/API/KontrolAplikasiController.php#L72-L89) |
+| KA3 | POST | `/aplikasi/aturan` (CREATE Aturan Baru) | ✅ | **Wajib**: `profil_anak_id (exists:profil_anak.id)`, `app_name`, `package_name`, `category (enum: game/social/video/education/chat/utility)` <br> Opsional (with default): `status (allowed|limited|blocked → allowed)`, `daily_limit_minutes: int ≥0`, `used_today_minutes: int ≥0`, `schedule_mode (all_day|study_time_blocked|bedtime_blocked|custom → all_day)`, `allow_weekend_extra: bool`, `weekend_extra_minutes: int ≥0` | **HTTP 201 Created**. `AturanAplikasiObject (with profilAnak + jadwalBlokir relation)` — **Unique Constraint**: composite `(profil_anak_id, package_name)` → tidak bisa double rule buat app yang sama per anak. | [KontrolAplikasi L91-L117](file:///d:/litensi-kids/backend/app/Http/Controllers/API/KontrolAplikasiController.php#L91-L117) |
+| KA4 | PUT/PATCH | `/aplikasi/aturan/{id}` (UPDATE Aturan) | ✅ | `user_id (wajib, gate ownership)`, semua field fillable aturan (all sometimes). `status` hanya boleh: allowed/limited/blocked. `schedule_mode` hanya boleh enum 4 nilai di atas. `last_used_time` bisa di-set manual dari Android jika perlu (date format). | `AturanAplikasiObject updated (load relation)` | [KontrolAplikasi L119-L150](file:///d:/litensi-kids/backend/app/Http/Controllers/API/KontrolAplikasiController.php#L119-L150) |
+| KA5 | DELETE | `/aplikasi/aturan/{id}` (HAPUS Aturan) | ✅ | `user_id (gate)` | Empty object + message sukses. **Cascade DB**: jika aturan dihapus, semua `jadwal_blokir` milik aturan ini OTOMATIS dihapus via `cascadeOnDelete` migration FK. | [KontrolAplikasi L152-L177](file:///d:/litensi-kids/backend/app/Http/Controllers/API/KontrolAplikasiController.php#L152-L177) |
+| KA6 | POST | `/aplikasi/aturan/bulk-kategori` (Shortcut Bulk Action per Kategori App) | ✅ | `user_id (wajib)`, `category: (game|social|video|education|chat|utility|all — 'all' = semua kategori)`, `set_status: required (allowed|limited|blocked)`, `set_daily_limit_minutes? (nullable int ≥0)`, opsional filter `profil_anak_id?` (hanya apply ke anak tertentu). | `{ updated_count: integer (berapa row aturan berhasil diupdate) }` + message info jumlah. Cocok untuk UI button "Blokir SEMUA Game untuk Semua Anak". | [KontrolAplikasi L179-L213](file:///d:/litensi-kids/backend/app/Http/Controllers/API/KontrolAplikasiController.php#L179-L213) |
+| **B. JADWAL BLOKIR (6 Endpoint)** | | | | | | |
+| KB1 | GET | `/aplikasi/jadwal` (List Jadwal per User) | ✅ | `user_id (wajib; kosong → [])` | `JadwalBlokirObject[]` (with `profilAnak` + `aturanAplikasi nullable` relation; sort: `is_active DESC` dulu baru `created_at DESC`) | [KontrolAplikasi L219-L235](file:///d:/litensi-kids/backend/app/Http/Controllers/API/KontrolAplikasiController.php#L219-L235) |
+| KB2 | GET | `/aplikasi/jadwal/{id}` (Detail Single Jadwal) | ✅ | `user_id (gate ownership)`, `id numeric` | `JadwalBlokirObject single (relation loaded)` | [KontrolAplikasi L237-L254](file:///d:/litensi-kids/backend/app/Http/Controllers/API/KontrolAplikasiController.php#L237-L254) |
+| KB3 | POST | `/aplikasi/jadwal` (CREATE Jadwal Baru) | ✅ | **Wajib**: `profil_anak_id (exists)`, `nama_jadwal (string max 255)`, `days_active: array integer 0-6 MIN 1 ITEM (0=Minggu,6=Sabtu)`, `jam_mulai: H:i format`, `jam_selesai: H:i format (HARUS SETELAH jam_mulai → after:jam_mulai validation)` <br> Opsional: `aturan_aplikasi_id? (nullable exists aturan_aplikasi.id → NULL = berlaku ke SEMUA aplikasi milik anak!)`, `action_when_match (block|limit|unblock → block default)`, `durasi_override_menit? (int ≥0 nullable)`, `is_active: boolean (default true)`, `keterangan? (string)` | **HTTP 201**, `JadwalBlokirObject (with relation loaded)` — `days_active` otomatis di-json_encode sebelum store ke kolom JSON DB. | [KontrolAplikasi L256-L287](file:///d:/litensi-kids/backend/app/Http/Controllers/API/KontrolAplikasiController.php#L256-L287) |
+| KB4 | PUT/PATCH | `/aplikasi/jadwal/{id}` (UPDATE Jadwal) | ✅ | `user_id (gate)`, semua field fillable jadwal (all sometimes). `days_active array` validasi MIN 1 item (jika dikirim). `jam_selesai after:jam_mulai` berlaku jika keduanya ada di body. | `JadwalBlokirObject updated` | [KontrolAplikasi L289-L322](file:///d:/litensi-kids/backend/app/Http/Controllers/API/KontrolAplikasiController.php#L289-L322) |
+| KB5 | DELETE | `/aplikasi/jadwal/{id}` (HAPUS Jadwal) | ✅ | `user_id (gate)` | Empty message sukses. | [KontrolAplikasi L324-L348](file:///d:/litensi-kids/backend/app/Http/Controllers/API/KontrolAplikasiController.php#L324-L348) |
+| KB6 | POST | `/aplikasi/jadwal/{id}/toggle` (Quick Action Flip Aktif/Nonaktif) | ✅ | `user_id (gate)`, NO BODY lain needed. | `{ id, is_active: boolean (nilai BARU setelah toggle) }` + message "Jadwal diaktifkan / dinonaktifkan" sesuai result flip. Cocok untuk UI Switch toggle single click tanpa buka modal edit. | [KontrolAplikasi L350-L376](file:///d:/litensi-kids/backend/app/Http/Controllers/API/KontrolAplikasiController.php#L350-L376) |
+| **C. PERMINTAAN AKSES APLIKASI (3 Endpoint)** | | | | | | |
+| KP1 | GET | `/aplikasi/permintaan` (List Permintaan Akses Anak) | ✅ | `user_id (wajib; kosong → [])` <br> Opsional: `status (pending|approved|rejected|all → default 'all' tampil semua, tapi di-sort PENDING DULU!)`, `limit (default: 100 row)` | `PermintaanAksesAplikasiObject[]` (with `profilAnak` + `handledByUser:id,name,email (SENSITIF — HANYA select 3 kolom, JANGAN load password/pin_master/hidden!)` relation. **Sort Logic**: `FIELD(status,'pending','approved','rejected')` (pending selalu tampil paling atas) + `requested_at DESC` (terbaru dulu). | [KontrolAplikasi L382-L411](file:///d:/litensi-kids/backend/app/Http/Controllers/API/KontrolAplikasiController.php#L382-L411) |
+| KP2 | POST | `/aplikasi/permintaan/{id}/approve` (Setujui Permintaan Akses) | ✅ | `user_id (wajib gate + handled_by_user_id di-set otomatis = user_id INI!)`, `id = permintaan ID (HANYA status PENDING yang bisa di-approve, selain pending → 404)` <br> Opsional: `durasi_menit_approve? (int ≥1 menit → default ambil dari $permintaan->durasi_menit atau 30 jika keduanya null)`, `catatan_approve? (string)`, `auto_buat_aturan: boolean (default TRUE — OTOMATIS buat AturanAplikasi dengan mode LIMITED daily_limit=durasi_approve, atau UPDATE existing jika package_name+anak sudah punya aturan)` | DB Transaction 2 step: (1) Update permintaan ke status=approved, set handled_by_user_id + handled_at=now, (2) auto create/update aturan_aplikasi sesuai durasi (jika auto_buat_aturan=true). Response: `PermintaanAksesObject updated load relation` + message "Permintaan akses disetujui". **Rollback otomatis jika step 2 gagal!** | [KontrolAplikasi L413-L475](file:///d:/litensi-kids/backend/app/Http/Controllers/API/KontrolAplikasiController.php#L413-L475) |
+| KP3 | POST | `/aplikasi/permintaan/{id}/reject` (Tolak Permintaan Akses) | ✅ | `user_id (gate + jadi handled_by_user_id otomatis)`, `id (HANYA PENDING yang bisa direject, else 404)`, Opsional: `alasan_reject? (string → disimpan ke kolom catatan_handle)` | `PermintaanAksesObject updated (status=rejected, handled_at=now, handled_by_user_id di-set)` + message "Permintaan akses ditolak". | [KontrolAplikasi L477-L516](file:///d:/litensi-kids/backend/app/Http/Controllers/API/KontrolAplikasiController.php#L477-L516) |
+
+---
+
 ## 3. 🚦 KONVENSI ROUTER LARAVEL (MENGHINDARI HTTP 500 TYPEERROR)
 > **Root Cause Bug Terdahulu**: Route wildcard `/paket/{id}` dideklarasikan DULU sebelum `/paket/mine` → `/paket/mine` URL cuma match WILDCARD DULU (top-down first-match) → call `show("mine")` dengan typed arg `show(int $id)` → **PHP 8 TypeError HTTP 500**. TIDAK TERDETEKSI via CLI App::make controller (karena lewat router!).
 
@@ -411,6 +439,54 @@ public function show($id): JsonResponse
 | **Maintenance & Registrasi** | `maintenance_mode (bool), maintenance_notice, registration_open (bool), max_trial_days (integer)` | |
 | **Server & Infra** | `server_region, server_status (optimal/degraded/down), fcm_push_status, database_status, sms_gateway_active (bool), whatsapp_gateway_active (bool)` | Untuk `/system/health` |
 | **Support** | `support_email, support_phone (string)` | |
+
+---
+
+### 4.10 `aturan_aplikasi` → [AturanAplikasi.php](file:///d:/litensi-kids/backend/app/Models/AturanAplikasi.php)
+(1 aturan = 1 anak + 1 aplikasi per anak; **Unique Constraint composite `(profil_anak_id, package_name)`** — tidak bisa double rule untuk app yang sama per anak! Lihat migration L28 Migration L24-L28)
+
+| Fillable | Tipe Cast | Catatan Penting |
+|---|---|---|
+| **PK FK** | `profil_anak_id (bigint FK → profil_anak.id cascadeOnDelete)` | Wajib; Kalau anak dihapus → semua aturan anak ini OTOMATIS hilang (cascade DB) |
+| **Identitas Aplikasi** | `app_name, package_name (string max 255), icon (nullable string)` | package_name = Android package ID (misal `com.google.android.youtube) |
+| **Kategori** | `category: ENUM — `game`/`social`/`video`/`education`/`chat`/`utility`` (string enum) | SESUAI frontend AppRuleItem.category L17 |
+| **Status** | `status ENUM: `allowed` (diizinkan) / `limited` (dibatasi durasi) / `blocked` (diblokir total) default: allowed` | Index DB untuk performa filter |
+| **Durasi Batasan (menit)** | `daily_limit_minutes: integer unsigned (default 0 = unlimited), `used_today_minutes`: integer unsigned (default 0) — keduanya cast `integer` | Dipantau dari Android companion app |
+| **Mode Jadwal** | `schedule_mode ENUM — all_day (tanpa jadwal, batas 24jam), study_time_blocked, bedtime_blocked, custom (default all_day) | SESUAI AppRuleItem.scheduleMode L25 frontend |
+| **Weekend Extra** | `allow_weekend_extra: boolean cast (default FALSE), `weekend_extra_minutes: integer unsigned default 0 | Sabtu-Minggu dapat extra kuota jika enable |
+| **Tracking** | `last_used_time → `datetime` cast nullable | Tracking terakhir app dibuka, sync dari Android |
+| **Relasi** | **`profilAnak` → BelongsTo(ProfilAnak::class)` + **`jadwalBlokir` → hasMany(JadwalBlokir::class, 'aturan_aplikasi_id'** | Detail row jadwal bisa spesifik per aturan / null (nullable aturan_aplikasi_id di table jadwal_blokir |
+
+---
+
+### 4.11 `jadwal_blokir` → [JadwalBlokir.php](file:///d:/litensi-kids/backend/app/Models/JadwalBlokir.php)
+(Rutin jadwal harian / per aturan aplikasi. Jika `aturan_aplikasi_id = NULL` → berlaku ke **SEMUA APLIKASI milik anak! (global blocker belajar / tidur mode)
+
+| Fillable | Tipe Cast | Catatan |
+|---|---|---|
+| **PK FK** | `profil_anak_id (FK cascadeOnDelete), `aturan_aplikasi_id` (nullable bigint FK → cascadeOnDelete) | NULL = berlaku SEMUA app anak (global); tidak spesifik app) |
+| **Identitas Jadwal** | `nama_jadwal: string max 255`, `keterangan: string nullable` | Label UI: "Jam Belajar", "Waktu Tidur Malam" |
+| **Hari Aktif** | `days_active → **JSON cast array of array (disimpan JSON di DB sebagai TEXT JSON** (cast array** | Accept array integer 0-6** | `0=Minggu, 1=Senin, ... 5=Jumat, 6=Sabtu**. Wajib MIN 1 item (Laravel validation min:1 rule validasi KB3) |
+| **Waktu** | `jam_mulai → time cast H:i format (00:00` — 23:59)`, **`jam_selesai → time cast H:i (HARUS SETELAH jam_mulai → validated using after: validation** | Validasi built-in Laravel rule untuk memastikan logika |
+| **Aksi** | **`action_when_match ENUM: block / limit (override durasi) / unblock (izinkan default block` default | Blockir permanen / override dengan duration menonaktif mode |
+| **Durasi Override** | `durasi_override_menit: integer unsigned nullable` | Hanya berlaku ketika aksi=limit, selain null = mengesampingkan daily_limit aturan (optional |
+| **Aktif / Nonaktif** | `is_active → boolean cast default true` | Index DB, toggle cepat is_active DESC |
+| **Relasi** | `profilAnak → BelongsTo ProfilAnak` + `aturanAplikasi nullable` | |
+
+---
+
+### 4.12 `permintaan_akses_aplikasi` → [PermintaanAksesAplikasi.php](file:///d:/litensi-kids/backend/app/Models/PermintaanAksesAplikasi.php)
+(Request buka blokir dari Android app anak (jika app diblokir total → anak bisa kirim request izin ke orang tua)
+
+| Fillable | Tipe Cast | Catatan |
+|---|---|---|
+| **PK FK** | `profil_anak_id (FK → cascadeOnDelete. Anak dihapus → semua permintaan anak ini hilang otomatis | Wajib |
+| **App Info** | `app_name: string`, `package_name: string`, `category: string` (category nullable untuk keperluan enum jika butuh filter label kategori app | |
+| **Durasi & Alasan** | `durasi_menit: integer unsigned nullable`, `alasan: text nullable` | Anak kirim alasan kenapa minta buka blokir & berapa lama (menit |
+| **Status** | `status ENUM: pending (default) | Index DB pending/approved/rejected (index untuk sort PENDING selalu paling pertama tampil di UI) — SESUAI AppAccessRequest.status L50 KontrolAplikasiPage |
+| **Audit Trail Handle** | `handled_by_user_id (nullable bigint FK users.id NULL_ON_DELETE** → nullOnDelete. Kalau user master dihapus → nilai kolom ini set NULL bukan row tidak hilang)`, `handled_at → datetime cast nullable `, catatan_handle: text nullable (alasan reject / catatan approve` | handled_by_user_id di-set OTOMATIS = user_id approve endpoint /reject (gate ownership yang sedang login (ZERO PRIVASI! Data ID user ID |
+| **Timestamp Request** | `requested_at datetime cast default CURRENT_TIMESTAMP via `useCurrent()` di migration) | Waktu Android mengirim permintaan |
+| **Relasi** | `profilAnak → BelongsTo ProfilAnak. Anak siapa yang request` + **`handledByUser → BelongsTo User::class 'handled_by_user_id' Siapa orang tua yang kasih approve/decline` | Load relation handledByUser HANYA select id,name,email (3 kolom, SENSITIF: hidden password/pin_master TIDAK PERNAH BOLEH bocor via JSON!! |
 
 ---
 
@@ -574,4 +650,4 @@ Sebelum **SATU BARIS PUN** code frontend ditulis → jalankan 7 langkah **WAJIB*
 
 ---
 
-_**Last updated**: 2026-09-18 (menambahkan: endpoint `/paket/mine` normalized plan compare, konvensi route order + whereNumber + typed arg defensif, all 9 models fillable/casts, 8 item fitur paket mapping `*_label` DRY, 4 endpoint CRUD Pengumuman Admin, 11 Controllers 100% response shape verified from source code real, NO ASSUMPTION.)_
+_**Last updated**: 2026-09-18 (update: Section 2.13 MODUL KONTROL APLIKASI 15 endpoint AturanAplikasi/JadwalBlokir/PermintaanAkses + Section 4.10-4.12 3 Model Baru, total 12 tabel DB. KontrolAplikasiController.php gate ownership whereHas profil_anak.user_id + group prefix aplikasi di routes sebelum wildcard anak/{id}. Verified from source code REAL, NO ASSUMPTION.)_
