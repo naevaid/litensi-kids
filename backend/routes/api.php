@@ -104,10 +104,12 @@ Route::prefix('v1')->group(function () {
         // CH1 — Route SPESIFIK non-wildcard DITULIS DULU (aturan anti TypeError!)
         Route::get('/threads', [ChatInboxController::class, 'getThreads']);
 
-        // CH2, CH3, CH4 — wildcard {anakId} dengan REGEX WHERE NUMBER (hanya numeric!)
+        // CH2, CH3, CH4, CH5 — wildcard {anakId} dengan REGEX WHERE NUMBER (hanya numeric!)
         Route::get('/{anakId}/messages', [ChatInboxController::class, 'getMessages'])->whereNumber('anakId');
         Route::post('/{anakId}/send', [ChatInboxController::class, 'sendMessage'])->whereNumber('anakId');
         Route::post('/{anakId}/grant-waktu-layar', [ChatInboxController::class, 'grantWaktuLayar'])->whereNumber('anakId');
+        // CH5 — Kirim pesan DARI ANAK ke Orang Tua (dipanggil oleh Companion App Android)
+        Route::post('/{anakId}/kirim-dari-anak', [ChatInboxController::class, 'kirimPesanDariAnak'])->whereNumber('anakId');
     });
 
     // === R5 Modul Hak Akses & Wali (Pendamping Co-Parent) — W1 W2 W3 W4 W5
@@ -136,12 +138,16 @@ Route::prefix('v1')->group(function () {
         Route::post('/pairing/confirm', [AnakController::class, 'confirmPairing']);
         Route::get('/pairing/status', [AnakController::class, 'pairingStatus']);
 
+        // AN8 — Upload telemetry dari Companion App Android (battery, online, used_today)
+        // Spesifik 3 segment URL, HARUS sebelum wildcard /anak/{id} agar tidak terintersepsi!
+        Route::post('/{id}/telemetry', [AnakController::class, 'uploadTelemetry'])->whereNumber('id');
+
         Route::get('/', [AnakController::class, 'index']);
-        Route::get('/{id}', [AnakController::class, 'show']);
+        Route::get('/{id}', [AnakController::class, 'show'])->whereNumber('id');
         Route::post('/', [AnakController::class, 'store']);
-        Route::put('/{id}', [AnakController::class, 'update']);
-        Route::patch('/{id}', [AnakController::class, 'update']);
-        Route::delete('/{id}', [AnakController::class, 'destroy']);
+        Route::put('/{id}', [AnakController::class, 'update'])->whereNumber('id');
+        Route::patch('/{id}', [AnakController::class, 'update'])->whereNumber('id');
+        Route::delete('/{id}', [AnakController::class, 'destroy'])->whereNumber('id');
     });
 
     // === Modul Geofence ===

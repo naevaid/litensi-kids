@@ -296,6 +296,62 @@ class AnakController extends Controller
         ]);
     }
 
+    // AN8 — Upload telemetry berkala dari Companion App Android
+    // (battery_level, is_online, last_active, used_today)
+    // Endpoint dipanggil setiap X menit via WorkManager periodic Android
+    public function uploadTelemetry(Request $request, int $id): JsonResponse
+    {
+        $anak = ProfilAnak::findOrFail($id);
+
+        $validated = $request->validate([
+            // Validasi kepemilikan perangkat: Android kirim salah satu dari 2 field ini
+            // agar tidak sembarang perangkat POST telemetry ke id anak lain.
+            'qr_pairing_code' => 'sometimes|string|max:50',
+            'pairing_pin' => 'sometimes|string|max:10',
+            // Field telemetry actual (semua opsional "sometimes": hanya yang dikirim yang diupdate)
+            'battery_level' => 'sometimes|integer|min:0|max:100',
+            'is_online' => 'sometimes|boolean',
+            'last_active' => 'sometimes|date',
+            'used_today' => 'sometimes|integer|min:0',
+        ]);
+
+        // Gate kepemilikan: jika qr_pairing_code atau pairing_pin dikirim, WAJIB cocok dengan row.
+        if (!empty($validated['qr_pairing_code']) && $validated['qr_pairing_code'] !== $anak->qr_pairing_code) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validasi kepemilikan gagal: qr_pairing_code tidak cocok dengan perangkat ini.',
+            ], 403);
+        }
+        if (!empty($validated['pairing_pin']) && $validated['pairing_pin'] !== $anak->pairing_pin) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validasi kepemilikan gagal: pairing_pin tidak cocok dengan perangkat ini.',
+            ], 403);
+        }
+
+        // HANYA update field telemetry yang dikirim (JANGAN overwrite field lain!)
+        $updatePayload = [];
+        if (isset($validated['battery_level'])) $updatePayload['battery_level'] = $validated['battery_level'];
+        if (isset($validated['is_online'])) $updatePayload['is_online'] = $validated['is_online'];
+        $updatePayload['last_active'] = $validated['last_active'] ?? now(); // default = sekarang (upload time)
+        if (isset($validated['used_today'])) $updatePayload['used_today'] = $validated['used_today'];
+
+        $anak->update($updatePayload);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Telemetry perangkat berhasil disimpan',
+            'data' => [
+                'id' => $anak->id,
+                'battery_level' => (int) $anak->battery_level,
+                'is_online' => (bool) $anak->is_online,
+                'last_active' => $anak->last_active?->toISOString(),
+                'used_today_minutes' => (int) $anak->used_today,
+                'updated_at' => now()->toISOString(),
+            ],
+        ]);
+    }
+
     // Hapus profil anak
     public function destroy(int $id): JsonResponse
     {

@@ -380,4 +380,80 @@ class ChatInboxController extends Controller
             ], 500);
         }
     }
+
+    /**
+     * CH5 — POST /chat/{anakId}/kirim-dari-anak
+     * Dipanggil oleh Companion App Android ketika anak KIRIM PESAN teks ke Orang Tua.
+     * Validasi kepemilikan via pairing_pin / qr_pairing_code (agar perangkat X tidak bisa kirim
+     *   pesan palsu atas nama anak Y).
+     * Insert row ChatMessage dengan sender = "child" (BUKAN parent / system).
+     */
+    public function kirimPesanDariAnak(Request $request, $anakId): JsonResponse
+    {
+        if (!is_numeric($anakId) || (int)$anakId <= 0) {
+            return response()->json(['success' => false, 'message' => 'Parameter anakId tidak valid.'], 400);
+        }
+        $anakIdInt = (int)$anakId;
+
+        $valid = $request->validate([
+            // Salah satu dari 2 field ini WAJIB dikirim untuk validasi kepemilikan perangkat
+            'pairing_pin' => 'required_without:qr_pairing_code|nullable|string|max:10',
+            'qr_pairing_code' => 'required_without:pairing_pin|nullable|string|max:50',
+            // Isi pesan actual
+            'text' => 'required|string|min:1|max:2000',
+            'attachments' => 'nullable|array',
+        ]);
+
+        // Gate ownership: CARI ProfilAnak dengan ID=$anakId DAN cocokkan pairing_pin/qr_pairing_code
+        // Agar tidak sembarang orang bisa POST ke endpoint ini.
+        $anakQuery = ProfilAnak::where('id', $anakIdInt);
+        if (!empty($valid['pairing_pin'])) {
+            $anakQuery->where('pairing_pin', $valid['pairing_pin']);
+        }
+        if (!empty($valid['qr_pairing_code'])) {
+            $anakQuery->where('qr_pairing_code', $valid['qr_pairing_code']);
+        }
+        $anak = $anakQuery->first();
+
+        if (!$anak) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Profil Anak tidak ditemukan atau pairing_pin/qr_pairing_code tidak cocok dengan perangkat ini.',
+            ], 403);
+        }
+
+        $textClean = trim((string)$valid['text']);
+        $attachments = !empty($valid['attachments']) && is_array($valid['attachments']) ? $valid['attachments'] : null;
+
+        // INSERT ke DB chat_message (sender = CHILD! Bukan parent)
+        $msg = ChatMessage::create([
+            'profil_anak_id' => $anakIdInt,
+            'user_id_orangtua' => $anak->user_id, // FK ke Orang Tua milik anak
+            'sender' => 'child', // KRITIS: enum "child" (bukan parent / system)
+            'text' => $textClean,
+            'attachments' => $attachments,
+            'is_read' => false, // default = belum dibaca Orang Tua
+            'permintaan_waktu_id' => null,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Pesan dari anak berhasil dikirim ke orang tua.',
+            'data' => [
+                'id' => $msg->id,
+                'anak_id' => $anak->id,
+                'nama_anak' => $anak->name,
+                'sender' => $msg->sender, // "child"
+                'text' => $msg->text,
+                'attachments' => $msg->attachments,
+                'is_read' => (bool)$msg->is_read, // false (belum dibaca ortu)
+                'timestamp' => $msg->created_at->toISOString(),
+                'saved_to_db' => true,
+                'thread_unread_orangtua_count' => ChatMessage::where('profil_anak_id', $anakIdInt)
+                    ->where('sender', 'child')
+                    ->where('is_read', false)
+                    ->count(),
+            ],
+        ], 201); // 201 Created
+    }
 }
