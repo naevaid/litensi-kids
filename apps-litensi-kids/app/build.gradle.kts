@@ -46,6 +46,15 @@ android {
     sourceCompatibility = JavaVersion.VERSION_11
     targetCompatibility = JavaVersion.VERSION_11
   }
+  // (Warning Cleanup 1) Fix 61 warning @Json annotation target ambigu Kotlin 2.0+.
+  // Opt-in future behavior: annotation di constructor param apply BOTH ke param + property (sesuai expect Moshi codegen).
+  // Alternative: @param:Json di tiap field (61x ubah) → ini opsi 1 line saja.
+  kotlinOptions {
+    freeCompilerArgs += listOf(
+      "-Xannotation-default-target=param-property"
+    )
+    jvmTarget = "11"
+  }
   buildFeatures {
     compose = true
     buildConfig = true
@@ -85,7 +94,7 @@ dependencies {
   implementation(libs.androidx.compose.ui.graphics)
   implementation(libs.androidx.compose.ui.tooling.preview)
   implementation(libs.androidx.core.ktx)
-  // implementation(libs.androidx.datastore.preferences)
+  implementation(libs.androidx.datastore.preferences)
   implementation(libs.androidx.lifecycle.runtime.compose)
   implementation(libs.androidx.lifecycle.runtime.ktx)
   implementation(libs.androidx.lifecycle.viewmodel.compose)
@@ -111,8 +120,10 @@ dependencies {
   implementation(libs.logging.interceptor)
   implementation(libs.moshi.kotlin)
   implementation(libs.okhttp)
-  // implementation(libs.play.services.location)
+  implementation(libs.play.services.location)
   implementation(libs.retrofit)
+  implementation(libs.androidx.work.runtime.ktx)
+  implementation(libs.firebase.messaging)
   testImplementation(libs.androidx.compose.ui.test.junit4)
   testImplementation(libs.androidx.core)
   testImplementation(libs.androidx.junit)

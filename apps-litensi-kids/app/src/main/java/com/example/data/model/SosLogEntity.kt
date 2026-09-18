@@ -7,8 +7,8 @@ import androidx.room.PrimaryKey
 data class SosLogEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val timestamp: Long = System.currentTimeMillis(),
-    val locationName: String = "Zona Sekolah SDN 01",
-    val latitude: Double = -6.2088,
-    val longitude: Double = 106.8456,
-    val status: String = "ALERT_SENT"
+    val locationName: String = "",
+    val latitude: Double = 0.0,
+    val longitude: Double = 0.0,
+    val status: String = ""
 )

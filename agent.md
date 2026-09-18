@@ -9,7 +9,7 @@
 
 ---
 
-## 0. PRINSIP UTAMA (ZERO-ASSUMPTION) ⚠️
+## 0. PRINSIP UTAMA (ZERO-ASSUMPTION)
 - **TIDAK BOLEH ASUMSI.** Sebelum tulis code → BACA existing code, tabel DB, API endpoint.
 - **TIDAK BOLEH DUPLIKASI.** Kalau function/service/endpoint sudah ada → pakai atau ubah, JANGAN bikin baru lagi.
 - **TIDAK BOLEH HARDCODE.** Semua data UI (text, count, dropdown option, timestamp) harus dari API, kecuali fallback untuk empty state.

@@ -32,6 +32,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Tab
@@ -51,7 +52,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -63,14 +67,16 @@ import com.example.ui.theme.SkyBlueSecondary
 
 @Composable
 fun PairingScreen(
-    onConnectSuccess: (parentName: String, childName: String, code: String) -> Unit,
+    onConnectSuccess: (code: String, pin: String, parentFallback: String, childFallback: String) -> Unit,
+    isPairingLoading: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     var selectedTabIndex by remember { mutableIntStateOf(0) }
-    var manualCodeInput by remember { mutableStateOf("LMN-8942-KID") }
-    var childNameInput by remember { mutableStateOf("Budi") }
+    var manualCodeInput by remember { mutableStateOf("") }
+    var pinInput by remember { mutableStateOf("") }
+    var childNameInput by remember { mutableStateOf("") }
     var parentNameInput by remember { mutableStateOf("Orang Tua") }
-    var selectedDeviceType by remember { mutableStateOf("Smartphone") } // Smartphone or Smartwatch
+    var selectedDeviceType by remember { mutableStateOf("Smartphone") }
 
     var showSuccessDialog by remember { mutableStateOf(false) }
 
@@ -149,12 +155,27 @@ fun PairingScreen(
             // Tab 1: QR Scanner Simulator Frame
             if (selectedTabIndex == 0) {
                 QrScannerFrame(
-                    onSimulateScanSuccess = {
+                    onSimulateScanSuccess = { rawPayload ->
+                        // Parse payload QR JSON shape: {t:litensi-pair, v:1, c:"code", p:"pin", ...}
+                        try {
+                            val regexCode = """"c"\s*:\s*"([^"]+)"""".toRegex()
+                            val regexPin = """"p"\s*:\s*"([^"]+)"""".toRegex()
+                            val codeMatch = regexCode.find(rawPayload)?.groupValues?.get(1)
+                            val pinMatch = regexPin.find(rawPayload)?.groupValues?.get(1)
+                            if (!codeMatch.isNullOrBlank()) {
+                                manualCodeInput = codeMatch.uppercase()
+                            }
+                            if (!pinMatch.isNullOrBlank()) {
+                                pinInput = pinMatch
+                            }
+                        } catch (_: Exception) {
+                            // Fallback jika parsing gagal: kosongkan
+                        }
                         showSuccessDialog = true
                     }
                 )
             } else {
-                // Tab 2: Manual 6-Digit Pairing Code
+                // Tab 2: Manual Kode + PIN Pairing
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(20.dp),
@@ -168,7 +189,7 @@ fun PairingScreen(
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(
-                            text = "Masukkan Kode Pairing 6-Digit",
+                            text = "Masukkan Kode Pairing dan PIN",
                             style = MaterialTheme.typography.titleMedium.copy(
                                 fontWeight = FontWeight.Bold,
                                 color = Color(0xFF0F172A)
@@ -176,7 +197,7 @@ fun PairingScreen(
                         )
 
                         Text(
-                            text = "Dapatkan kode dari aplikasi Litensi Parent di HP Orang Tua",
+                            text = "Dapatkan kode + PIN dari aplikasi Litensi Parent di HP Orang Tua",
                             style = MaterialTheme.typography.bodySmall.copy(
                                 color = Color(0xFF64748B),
                                 textAlign = TextAlign.Center
@@ -188,7 +209,7 @@ fun PairingScreen(
                             value = manualCodeInput,
                             onValueChange = { manualCodeInput = it.uppercase() },
                             label = { Text("Kode Pairing") },
-                            placeholder = { Text("Contoh: LMN-8942-KID") },
+                            placeholder = { Text("Contoh: LTN-NAD-8842-SEC") },
                             singleLine = true,
                             shape = RoundedCornerShape(16.dp),
                             colors = OutlinedTextFieldDefaults.colors(
@@ -202,8 +223,32 @@ fun PairingScreen(
 
                         Spacer(modifier = Modifier.height(16.dp))
 
+                        OutlinedTextField(
+                            value = pinInput,
+                            onValueChange = { pinInput = it.filter { ch -> ch.isDigit() }.take(10) },
+                            label = { Text("PIN Pairing (6 Digit)") },
+                            placeholder = { Text("Contoh: 884291") },
+                            singleLine = true,
+                            visualTransformation = PasswordVisualTransformation(),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = IndigoPrimary,
+                                unfocusedBorderColor = Color(0xFFCBD5E1)
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("input_pairing_pin")
+                        )
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        val btnEnabled = !isPairingLoading
+                            && manualCodeInput.isNotBlank()
+                            && pinInput.length >= 4
                         Button(
                             onClick = { showSuccessDialog = true },
+                            enabled = btnEnabled,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(38.dp)
@@ -211,16 +256,32 @@ fun PairingScreen(
                             shape = RoundedCornerShape(12.dp),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = IndigoPrimary,
-                                contentColor = Color.White
+                                contentColor = Color.White,
+                                disabledContainerColor = IndigoPrimary.copy(alpha = 0.4f),
+                                disabledContentColor = Color.White.copy(alpha = 0.7f)
                             )
                         ) {
-                            Text(
-                                text = "Hubungkan Perangkat Sekarang",
-                                style = MaterialTheme.typography.titleMedium.copy(
+                            if (isPairingLoading) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(18.dp),
+                                    color = Color.White,
+                                    strokeWidth = 2.dp
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    text = "Sedang Hubungkan...",
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 13.sp
                                 )
-                            )
+                            } else {
+                                Text(
+                                    text = "Hubungkan Perangkat Sekarang",
+                                    style = MaterialTheme.typography.titleMedium.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 13.sp
+                                    )
+                                )
+                            }
                         }
                     }
                 }
@@ -298,11 +359,18 @@ fun PairingScreen(
 
                     Spacer(modifier = Modifier.height(18.dp))
 
+                    val btnFinalEnabled = !isPairingLoading
                     Button(
                         onClick = {
                             showSuccessDialog = false
-                            onConnectSuccess(parentNameInput, childNameInput, manualCodeInput)
+                            onConnectSuccess(
+                                manualCodeInput,
+                                pinInput,
+                                parentNameInput.takeIf { it.isNotBlank() } ?: "Orang Tua",
+                                childNameInput.takeIf { it.isNotBlank() } ?: "Anak"
+                            )
                         },
+                        enabled = btnFinalEnabled,
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(38.dp)
@@ -310,16 +378,32 @@ fun PairingScreen(
                         shape = RoundedCornerShape(12.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = EmeraldGreen,
-                            contentColor = Color.White
+                            contentColor = Color.White,
+                            disabledContainerColor = EmeraldGreen.copy(alpha = 0.4f),
+                            disabledContentColor = Color.White.copy(alpha = 0.7f)
                         )
                     ) {
-                        Text(
-                            text = "Masuk ke Dashboard Anak",
-                            style = MaterialTheme.typography.titleMedium.copy(
+                        if (isPairingLoading) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                color = Color.White,
+                                strokeWidth = 2.dp
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                text = "Memproses...",
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 13.sp
                             )
-                        )
+                        } else {
+                            Text(
+                                text = "Masuk ke Dashboard Anak",
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp
+                                )
+                            )
+                        }
                     }
                 }
             }

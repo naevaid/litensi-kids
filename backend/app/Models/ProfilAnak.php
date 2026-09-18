@@ -32,6 +32,7 @@ class ProfilAnak extends Model
         'last_active',
         'used_today',
         'av_minutes_daily_override',
+        'fcm_token',
         'notes',
     ];
 

@@ -241,7 +241,7 @@ fun DashboardScreen(
 
                         Column {
                             Text(
-                                text = "Halo, ${pairingState?.childName ?: "Budi"}! ✨",
+                                text = "Halo, ${pairingState?.childName?.takeIf { it.isNotBlank() } ?: "Anak"}! ✨",
                                 style = MaterialTheme.typography.titleLarge.copy(
                                     fontWeight = FontWeight.Bold,
                                     color = Color.White,
@@ -618,7 +618,7 @@ fun DashboardScreen(
                         ProfilTabContent(
                             childName = pairingState?.childName ?: "Anak",
                             parentName = pairingState?.parentName ?: "Orang Tua",
-                            pairingCode = pairingState?.pairingCode ?: "LMN-8942-KID",
+                            pairingCode = pairingState?.pairingCode ?: "",
                             points = childProfile?.points ?: 0,
                             permissionsState = permissionsState,
                             onDisconnect = { viewModel.disconnectDevice() },

@@ -22,7 +22,8 @@ import kotlinx.coroutines.launch
         SosLogEntity::class,
         ChildProfileEntity::class
     ],
-    version = 1,
+    // (B3) Bump version 1 → 2 karena schema PairingStateEntity bertambah 4 field baru
+    version = 2,
     exportSchema = false
 )
 abstract class LitensiKidsDatabase : RoomDatabase() {
@@ -44,10 +45,12 @@ abstract class LitensiKidsDatabase : RoomDatabase() {
                     LitensiKidsDatabase::class.java,
                     "litensi_kids_db"
                 )
+                // (B3) Schema mismatch → drop & recreate DB (dev mode aman. Production butuh Migration class!)
+                // (B7 Warning Fix) Overload baru Room 2.7+ wajib parameter dropAllTables (true = semua tabel di-drop)
+                .fallbackToDestructiveMigration(dropAllTables = true)
                 .addCallback(object : RoomDatabase.Callback() {
                     override fun onCreate(db: SupportSQLiteDatabase) {
                         super.onCreate(db)
-                        // Seed initial data
                         INSTANCE?.let { database ->
                             CoroutineScope(Dispatchers.IO).launch {
                                 populateInitialData(database)
@@ -61,28 +64,33 @@ abstract class LitensiKidsDatabase : RoomDatabase() {
             }
         }
 
+        // Seed initial data: HANYA Task, Reward, dan default PairingState kosong.
+        // JANGAN ada hardcode data profil anak / nama ortu — data asli dari API setelah pairing sukses.
         private suspend fun populateInitialData(db: LitensiKidsDatabase) {
+            // Pairing default: isConnected=false, field lain kosong (menunggu hasil API real)
             db.pairingDao().savePairingState(
                 PairingStateEntity(
                     isConnected = false,
                     parentName = "Orang Tua",
-                    childName = "Budi",
-                    pairingCode = "LMN-8942-KID"
+                    childName = "Anak",
+                    pairingCode = ""
                 )
             )
 
+            // ChildProfile default 0 semua (hardcode points=250 / battery=88 DIHAPUS sesuai B5)
             db.childProfileDao().saveProfile(
                 ChildProfileEntity(
-                    points = 250,
-                    screenTimeRemainingMinutes = 105,
-                    totalScreenTimeMinutes = 180,
-                    currentSafeZone = "Sekolah SDN 01",
-                    batteryLevel = 88,
-                    isGpsActive = true,
-                    lastCheckInTime = "07:30 WIB"
+                    points = 0,
+                    screenTimeRemainingMinutes = 0,
+                    totalScreenTimeMinutes = 0,
+                    currentSafeZone = "",
+                    batteryLevel = 0,
+                    isGpsActive = false,
+                    lastCheckInTime = ""
                 )
             )
 
+            // Seed Task sample (modul tugas & reward belum ada API khusus; seed sementara agar UI tidak kosong)
             db.taskDao().insertAll(
                 listOf(
                     TaskEntity(
@@ -109,6 +117,7 @@ abstract class LitensiKidsDatabase : RoomDatabase() {
                 )
             )
 
+            // Seed Reward sample
             db.rewardDao().insertAll(
                 listOf(
                     RewardEntity(

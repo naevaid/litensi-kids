@@ -65,7 +65,7 @@ import com.example.ui.theme.SkyBlueSecondary
 
 @Composable
 fun QrScannerFrame(
-    onSimulateScanSuccess: () -> Unit,
+    onSimulateScanSuccess: (rawPayload: String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -285,7 +285,10 @@ fun QrScannerFrame(
 
         // Trigger / Confirm Scan Button
         Button(
-            onClick = onSimulateScanSuccess,
+            onClick = {
+                val emptyPayload = """{"t":"litensi-pair","v":1,"c":"","p":"","u":0,"ts":0}"""
+                onSimulateScanSuccess(emptyPayload)
+            },
             modifier = Modifier
                 .fillMaxWidth()
                 .height(42.dp)

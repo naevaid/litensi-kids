@@ -93,6 +93,8 @@ class AnakController extends Controller
     // Cek realtime status pairing (dipoll frontend setiap beberapa detik)
     // Untuk simulasi MVP: jika query param ?simulate_paired=1 dikirim dari testing,
     //   mark as paired di cache & return device info (seolah-olah companion app sudah confirm)
+    // (BUG FIX #2) Jika cache TIDAK ADA / EXPIRED (TTL 10 menit lewat), fallback query DB ProfilAnak
+    //   by qr_pairing_code, agar Android RE-PAIRING (setelah data anak tersimpan) TIDAK error 404.
     public function pairingStatus(Request $request): JsonResponse
     {
         $code = $request->input('code');
@@ -106,10 +108,53 @@ class AnakController extends Controller
         $cacheKey = "pairing:{$code}";
         $pairing = Cache::get($cacheKey);
 
+        // (BUG FIX #2) CACHE EXPIRED / TIDAK ADA → FALLBACK ke DB ProfilAnak by qr_pairing_code.
+        // Ini mengatasi flow: user generate kode → save data anak ke DB → cache expire (10 menit lewat)
+        //   → baru buka Android app pairing → TIDAK ERROR 404 lagi.
         if (!$pairing) {
+            $anakFromDb = ProfilAnak::with('user')
+                ->where('qr_pairing_code', $code)
+                ->first();
+
+            // Jika ada di DB (artinya sudah pernah disimpan) → construct status dari DB, bukan cache.
+            if ($anakFromDb) {
+                $dbDeviceInfo = [
+                    'nama_perangkat' => $anakFromDb->device_name ?? 'Perangkat Android',
+                    'model' => $anakFromDb->device_model,
+                    'os' => $anakFromDb->os_version,
+                    'versi_app' => 'Litensi Kids Companion',
+                    'battery' => (int) ($anakFromDb->battery_level ?? 0),
+                ];
+                $paired = !empty($anakFromDb->paired_at);
+
+                // Isi ulang cache (segar) 10 menit agar polling frontend tidak fallback terus.
+                Cache::put($cacheKey, [
+                    'code' => $code,
+                    'pin' => $anakFromDb->pairing_pin,
+                    'user_id' => (int) $anakFromDb->user_id,
+                    'paired' => $paired,
+                    'device_info' => $dbDeviceInfo,
+                    'paired_at' => $anakFromDb->paired_at?->toISOString(),
+                    'created_at' => now()->toISOString(),
+                ], 600);
+
+                return response()->json([
+                    'success' => true,
+                    'data' => [
+                        'code' => $code,
+                        'paired' => $paired,
+                        'device_info' => $dbDeviceInfo,
+                        'paired_at' => $anakFromDb->paired_at?->toISOString(),
+                        'expired' => false,
+                    ],
+                ]);
+            }
+
+            // BENAR-BENAR TIDAK ADA (cache hilang + row ProfilAnak tidak ada qr_pairing_code = code)
+            // → return 404 sesuai kontrak lama.
             return response()->json([
                 'success' => false,
-                'message' => 'Kode pairing tidak ditemukan atau sudah kedaluwarsa',
+                'message' => 'Kode pairing tidak ditemukan atau sudah kedaluwarsa. Silakan generate kode baru.',
                 'data' => ['code' => $code, 'paired' => false, 'expired' => true],
             ], 404);
         }
@@ -205,23 +250,68 @@ class AnakController extends Controller
         $profilAnak = null;
 
         if ($userId) {
+            // (BUG FIX #1 - Scenario A) Cari row ProfilAnak existing by qr_pairing_code = code.
+            // Idealnya ini selalu ketemu, tapi jika user generate code LAMA & save baru code BARU mismatch,
+            //   fallback ke Scenario B / Scenario C di bawah.
             $profilAnak = ProfilAnak::where('user_id', $userId)
                 ->where('qr_pairing_code', $code)
                 ->first();
 
-            if ($profilAnak) {
+            if (!$profilAnak) {
+                // (BUG FIX #1 - Scenario B) by qr_pairing_code tidak ketemu,
+                //   fallback cari ProfilAnak TERBARU user_id ini yang BELUM punya qr_pairing_code
+                //   (baru dibuat / save tapi tanpa qr_pairing_code inject).
+                $profilAnak = ProfilAnak::where('user_id', $userId)
+                    ->whereNull('qr_pairing_code')
+                    ->orderByDesc('id')
+                    ->first();
+
+                if (!$profilAnak) {
+                    // (BUG FIX #1 - Scenario C) TIDAK ADA row ProfilAnak sama sekali di DB user ini.
+                    //   → Auto-create minimal row dengan nama default "Anak #userId" agar pairing TETAP BERHASIL
+                    //     tanpa harus user save data anak dahulu di web.
+                    //     Nanti user tetap bisa edit nama / age / gender di dashboard setelah pairing.
+                    $defaultName = "Anak #{$userId}";
+                    $profilAnak = ProfilAnak::create([
+                        'user_id' => $userId,
+                        'name' => $defaultName,
+                        'age' => 10,
+                        'gender' => 'laki-laki',
+                        'device_name' => $deviceInfo['nama_perangkat'],
+                        'device_model' => $deviceInfo['model'],
+                        'os_version' => $deviceInfo['os'],
+                        'status' => 'active',
+                        'qr_pairing_code' => $code,
+                        'pairing_pin' => $validated['pin'],
+                        'battery_level' => $deviceInfo['battery'],
+                        'is_online' => true,
+                        'paired_at' => now(),
+                        'last_active' => now(),
+                        'used_today' => 0,
+                        'notes' => 'Auto-created saat Android pairing pertama kali. Silakan edit data di dashboard.',
+                    ]);
+                }
+
+                // Scenario B: Row ditemukan tanpa qr_pairing_code → inject code & pin ke row tersebut.
                 $profilAnak->update([
+                    'qr_pairing_code' => $code,
                     'pairing_pin' => $validated['pin'],
-                    'device_name' => $deviceInfo['nama_perangkat'],
-                    'device_model' => $deviceInfo['model'],
-                    'os_version' => $deviceInfo['os'],
-                    'battery_level' => $deviceInfo['battery'],
-                    'is_online' => true,
-                    'paired_at' => now(),
-                    'last_active' => now(),
                 ]);
-                $profilAnak = $profilAnak->fresh()->load('user');
             }
+
+            // (Scenario A/B/C SEMUA MASUK SINI: row SUDAH ada) → Update kolom device info + timestamp.
+            $profilAnak->update([
+                'pairing_pin' => $validated['pin'],
+                'device_name' => $deviceInfo['nama_perangkat'],
+                'device_model' => $deviceInfo['model'],
+                'os_version' => $deviceInfo['os'],
+                'battery_level' => $deviceInfo['battery'],
+                'fcm_token' => $deviceInfo['fcm_token'] ?? null,
+                'is_online' => true,
+                'paired_at' => now(),
+                'last_active' => now(),
+            ]);
+            $profilAnak = $profilAnak->fresh()->load('user');
         }
 
         return response()->json([
