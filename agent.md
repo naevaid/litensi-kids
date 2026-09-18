@@ -3,6 +3,10 @@
 > **File permanen: pedoman ALL agent saat menulis/merubah code di project ini.**
 > **Wajib dibaca sebelum eksekusi apapun. Hapus point yang tidak relevan = DILARANG.**
 
+# ENDPOINT YANG PERLU DIBACA
+- [KONVENSI_INTEGRASI_API.md](KONVENSI_INTEGRASI_API.md)
+
+
 ---
 
 ## 0. PRINSIP UTAMA (ZERO-ASSUMPTION) ⚠️

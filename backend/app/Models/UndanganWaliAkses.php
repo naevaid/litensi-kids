@@ -29,6 +29,8 @@ class UndanganWaliAkses extends Model
         'permission_override_json',
         'status',
         'invited_at',
+        'email_sent_at',       // Migration R5c 000014: audit timestamp email terkirim via SMTP
+        'email_last_error',    // Migration R5c 000014: cache error SMTP untuk audit cepat
         'expires_at',
         'accepted_at',
         'declined_at',
@@ -44,6 +46,7 @@ class UndanganWaliAkses extends Model
         return [
             'permission_override_json' => 'array',
             'invited_at'               => 'datetime',
+            'email_sent_at'            => 'datetime',
             'expires_at'               => 'datetime',
             'accepted_at'              => 'datetime',
             'declined_at'              => 'datetime',

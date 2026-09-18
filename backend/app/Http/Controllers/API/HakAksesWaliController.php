@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\Controller;
+use App\Mail\UndanganWaliMail;
 use App\Models\PermissionWaliPerModul;
 use App\Models\UndanganWaliAkses;
 use App\Models\User;
@@ -10,6 +11,7 @@ use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 
 // Modul R5: Hak Akses & Wali (Pendamping Co-Parent)
@@ -251,20 +253,51 @@ class HakAksesWaliController extends Controller
 
         $calonPendamping = User::where('email', $emailWali)->first();
         $emailTerkirim = false;
-        // (nanti integrasi Mailgun/SMTP: kirim email ke $emailWali berisi link terima undangan kodeUnik)
-        // Untuk sekarang email_terkirim=false karena belum ada provider email.
+        $errorMail = null;
+
+        // Kirim email via SMTP Hostinger (.env MAIL_ L50-57)
+        // Try/catch: jika SMTP gagal (535 auth / timeout), undangan TETAP tersimpan di DB.
+        // Return response tetap sukses 201 dengan email_terkirim=false + catatan error_mail (jika ada)
+        try {
+            Mail::to($emailWali)->send(new UndanganWaliMail($undangan, $user, $calonPendamping));
+            $emailTerkirim = true;
+            // Simpan audit email_sent_at + reset error sebelumnya (jika ada)
+            $undangan->update([
+                'invited_at'      => Carbon::now(),
+                'email_sent_at'   => Carbon::now(),
+                'email_last_error'=> null,
+            ]);
+        } catch (\Throwable $e) {
+            $emailTerkirim = false;
+            $errorMail = $e->getMessage();
+            // Simpan error ke kolom table untuk audit cepat tanpa buka log
+            $undangan->update([
+                'email_last_error' => mb_substr((string)$e->getMessage(), 0, 500),
+            ]);
+            // Log untuk debug tapi tidak crash endpoint
+            \Illuminate\Support\Facades\Log::warning('Gagal kirim undangan wali email: ' . $e->getMessage(), [
+                'undangan_id' => $undangan->id,
+                'email_to'    => $emailWali,
+                'mailer'      => config('mail.default'),
+            ]);
+        }
 
         return response()->json([
             'success' => true,
-            'message' => 'Undangan berhasil dibuat',
+            'message' => $emailTerkirim
+                ? 'Undangan berhasil dibuat & email terkirim'
+                : 'Undangan berhasil dibuat (gagal kirim email — simpan kode undangan untuk dibagikan manual)',
             'data'    => [
-                'undangan_id'       => $undangan->id,
+                'undangan_id'        => $undangan->id,
                 'kode_undang_unique' => $undangan->kode_undang_unique,
-                'status'            => $undangan->status,
-                'email_terkirim'    => $emailTerkirim,
-                'expires_at'        => $undangan->expires_at?->toIso8601String(),
-                'user_sudah_ada'    => $calonPendamping?->id,
-                'permissions_final' => (object)($permissionOverride ?? $roleTpl['permissions']),
+                'status'             => $undangan->status,
+                'email_terkirim'     => $emailTerkirim,
+                'error_mail'         => $errorMail,
+                'expires_at'         => $undangan->expires_at?->toIso8601String(),
+                'user_sudah_ada'     => $calonPendamping?->id,
+                'link_terima'        => url('/terima-undangan') . '?kode=' . urlencode($undangan->kode_undang_unique),
+                'link_register'      => url('/register') . '?kode=' . urlencode($undangan->kode_undang_unique) . '&email=' . urlencode($emailWali),
+                'permissions_final'  => (object)($permissionOverride ?? $roleTpl['permissions']),
             ],
         ], 201);
     }
