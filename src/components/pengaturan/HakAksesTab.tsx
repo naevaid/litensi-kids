@@ -617,15 +617,22 @@ export const HakAksesTab: React.FC<HakAksesTabProps> = ({ showToast }) => {
                   disabled={submittingInvite}
                   className="w-full px-3 py-2 text-xs font-normal bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-100 outline-none focus:border-indigo-500 disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  {roles.filter(r => !r.isDefault).map(r => (
-                    <option key={r.id} value={r.id}>{r.roleName}</option>
-                  ))}
-                  {roles.length === 0 && (
-                    <>
-                      <option value="role-2">Pendamping / Wali (Co-Parent)</option>
-                      <option value="role-3">Guru Les / Pengawas Belajar</option>
-                    </>
-                  )}
+                  {(() => {
+                    // FIX DROPDOWN KOSONG: Selalu tampilkan 2 pilihan enum FIXED untuk undangan (TIDAK BOLEH pilih Ortu Utama).
+                    // Label dari state roles jika W1 sudah load, jika tidak pakai default hardcoded (tidak pernah kosong race condition).
+                    const rolePendamping = roles.find(r => String(r.id) === 'role-2');
+                    const roleGuru = roles.find(r => String(r.id) === 'role-3');
+                    return (
+                      <>
+                        <option value="role-2">
+                          {rolePendamping?.roleName?.trim() || 'Pendamping / Wali (Co-Parent)'}
+                        </option>
+                        <option value="role-3">
+                          {roleGuru?.roleName?.trim() || 'Guru Les / Pengawas Belajar'}
+                        </option>
+                      </>
+                    );
+                  })()}
                 </select>
               </div>
 
