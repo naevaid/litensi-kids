@@ -41,28 +41,52 @@ interface ChatInboxPageProps {
 // Interface + helper mapping daftar anak dari API /anak
 interface ChildOptionItem {
   id: string;
-  nama_lengkap: string;
-  nama_panggilan: string;
-  device_model: string | null;
-  os_version: string | null;
+  nama_lengkap: string;        // 🔴 FIELD ASLI DARI PROFIL_ANAK DB (ProfilAnak.php fillable line 19): name BUKAN nama_lengkap / nama_panggilan
+  nama_panggilan: string;      // Kosongkan saja (TIDAK ADA di DB). Tidak dipakai lagi.
+  device_name: string | null;  // 🔴 PENTING: device_name = NAMA BAIK user input ("Tablet Samsung Tab A8") — INI YANG DITAMPILKAN!
+  device_model: string | null; // device_model = KODE PRODUK (SM-X200 (Android 13)) — JANGAN DITAMPILKAN di UI user!
+  os_version: string | null;   // os_version = "Android 13 OneUI 5.1" (jika sudah ada prefix Android, JANGAN ditambah prefix Android LAGI!
+  battery_level: number | null;
+  is_online: boolean | null;
   label: string;
 }
 const mapApiAnakToChildOption = (db: any): ChildOptionItem | null => {
   if (!db) return null;
   const id = String(db.id ?? '');
-  const namaLengkap = String(db.nama_lengkap ?? '').trim();
-  const namaPanggilan = String(db.nama_panggilan ?? '').trim();
-  const deviceModel = db.device_model ? String(db.device_model) : null;
-  const osVersion = db.os_version ? String(db.os_version) : null;
-  const displayName = namaPanggilan || namaLengkap || `Anak #${id}`;
-  const deviceStr = deviceModel ? deviceModel : (osVersion ? `Android ${osVersion}` : 'Perangkat');
+  // 🔴 FIELD UTAMA SESUAI ProfilAnak.php fillable (KONVENSI_INTEGRASI_API.md Section 4.3):
+  // - NAMA ANAK: name (BUKAN nama_lengkap / nama_panggilan)
+  // - NAMA PERANGKAT BAIK: device_name (BUKAN device_model! device_model = kode internal SM-X200)
+  // - OS VERSION: os_version SUDAH ada prefix "Android 13 OneUI 5.1" — JANGAN ditambah prefix LAGI "Android ..." → duplikat!
+  const namaLengkap = String(db.name ?? '').trim();
+  const deviceName = db.device_name ? String(db.device_name).trim() : null;
+  const deviceModel = db.device_model ? String(db.device_model).trim() : null;
+  const osVersion = db.os_version ? String(db.os_version).trim() : null;
+  const batteryLevel = db.battery_level !== null && db.battery_level !== undefined && !isNaN(Number(db.battery_level)) ? Math.max(0, Math.min(100, Number(db.battery_level))) : null;
+  const isOnline = typeof db.is_online === 'boolean' ? db.is_online : (String(db.is_online ?? '').toLowerCase() === 'true' || String(db.is_online ?? '') === '1');
+
+  // Display name untuk title thread: HANYA nama anak (JANGAN fallback ke device / Android / kode SM-X)
+  const displayName = namaLengkap || `Profil Anak #${id}`;
+
+  // Device info: device_name (jika ada, TAMPILKAN INI — user friendly!)
+  // Opsional tambah os_version HANYA JIKA BERBEDA / device_name kosong.
+  // PRIORITAS: 1. device_name → 2. device_model (jika tidak ada device_name tapi bukan kode SM-saja) → 3. os_version → 4. "Perangkat"
+  // 🔴 JANGAN PERNAH otomatis tambah prefix "Android " di depan os_version → os_version sudah berisi "Android 13 OneUI 5.1"!
+  const deviceParts: string[] = [];
+  if (deviceName) deviceParts.push(deviceName);
+  if (osVersion) deviceParts.push(osVersion);
+  if (!deviceName && deviceModel) deviceParts.push(deviceModel); // fallback device_model JIKA device_name KOSONG
+  const deviceStr = deviceParts.length > 0 ? deviceParts.join(' • ') : 'Perangkat';
+
   return {
     id,
     nama_lengkap: namaLengkap,
-    nama_panggilan: namaPanggilan,
+    nama_panggilan: '',
+    device_name: deviceName,
     device_model: deviceModel,
     os_version: osVersion,
-    label: `${displayName} (${deviceStr})`,
+    battery_level: batteryLevel,
+    is_online: isOnline,
+    label: `${displayName} (${deviceName || deviceStr})`,
   };
 };
 
@@ -75,26 +99,32 @@ const AVATAR_COLOR_PALET = [
 
 // Mapper: ChildOptionItem → DeviceThread (tanpa data dummy pesan)
 const mapChildToThread = (child: ChildOptionItem, idx: number): DeviceThread => {
-  // 🔴 PENTING: childName = HANYA nama anak (JUJUR!), TIDAK BOLEH diisi device info / OS / app_version
-  // Jika nama_panggilan & nama_lengkap KOSONG → fallback Profilm Anak #id (JANGAN Android 14 / Companion v...)
-  const namaPanggilan = (child.nama_panggilan ?? '').trim();
+  // 🔴 PENTING: childName = HANYA nama anak (JUJUR!). child.nama_lengkap = 100% dari ProfilAnak.name API /anak
+  // Jangan fallback ke "Profil Anak #id" disini karena mapApiAnakToChildOption sudah handle fallback.
   const namaLengkap = (child.nama_lengkap ?? '').trim();
-  const displayName = namaPanggilan || namaLengkap || `Profil Anak #${child.id}`;
+  const displayName = namaLengkap || `Profil Anak #${child.id}`;
 
-  // Device info: HANYA device_model + OS version (JANGAN pernah sisip teks hardcode "Litensi Kids Companion vX.X.X")
+  // Device info: HANYA child.deviceStr (hasil dari mapApiAnakToChildOption: device_name + os_version, JANGAN ada prefix Android duplikat!)
+  // Prioritas 1. device_name ("Tablet Samsung Tab A8") → 2. os_version ("Android 13 OneUI 5.1") → 3. device_model kode → 4. "Perangkat"
   const deviceParts: string[] = [];
-  if (child.device_model) deviceParts.push(child.device_model);
-  if (child.os_version) deviceParts.push(`Android ${child.os_version}`);
+  if (child.device_name) deviceParts.push(child.device_name);
+  if (child.os_version) deviceParts.push(child.os_version);
+  if (!child.device_name && child.device_model) deviceParts.push(child.device_model);
   const deviceStr = deviceParts.length > 0 ? deviceParts.join(' • ') : 'Perangkat';
 
+  // 🔴 STATUS & BATTERY diambil LANGSUNG dari API /anak (ProfilAnak.is_online + battery_level):
+  // Local debug script user 13: is_online = true, battery_level = 84
+  let status: 'online' | 'offline' | 'restricted' = 'offline';
+  if (child.is_online === true) status = 'online';
+  // (Untuk nanti: jika profil_anak.status = 'restricted' → set restricted melebihi is_online)
   return {
     id: `thread-anak-${child.id}`,
     anakId: child.id,
     childName: displayName,
     childFullName: namaLengkap || displayName,
     deviceModel: deviceStr,
-    status: 'offline', // Default JUJUR: sampai ada real status dari app companion
-    battery: null, // Jangan hardcode 84% / 62% boongan
+    status,
+    battery: child.battery_level,
     lastMessage: '-',
     lastTime: '-',
     unread: 0,
