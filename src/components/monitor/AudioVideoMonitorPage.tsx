@@ -130,6 +130,29 @@ export const AudioVideoMonitorPage: React.FC<AudioVideoMonitorPageProps> = ({ sh
   const [isSimulatingMove, setIsSimulatingMove] = useState<boolean>(false);
   const mapContainerRef = useRef<HTMLDivElement>(null);
 
+  // ================ PRIORITAS 1: KUOTA AV MONITOR (LISTEN + CAMERA GABUNG 1 KUOTA) ================
+  // Data dari AV1 endpoint /monitor/kuota-hari-ini
+  interface KuotaAnakHariIni {
+    profil_anak_id: number;
+    nama_anak: string;
+    device_model: string | null;
+    tanggal: string;
+    paket_kuota_menit_harian: number; // 0 = unlimited
+    digunakan_audio_menit: number;
+    digunakan_video_menit: number;
+    total_digunakan_menit: number;
+    sisa_kuota_menit: number; // -1 = unlimited, 0 = habis, >0 = sisa menit
+    persentase_terpakai: number; // 0-100
+    last_mode: 'idle' | 'audio_listen' | 'camera_live';
+    last_started_at: string | null;
+    last_stopped_at: string | null;
+    last_sesi_id: number | null;
+    status_kuota: 'unlimited' | 'normal' | 'hampir_habis' | 'habis';
+  }
+  const [kuotaList, setKuotaList] = useState<KuotaAnakHariIni[]>([]);
+  const [currentActiveSesiId, setCurrentActiveSesiId] = useState<number | null>(null); // Dipakai AV3 stop
+  // ================ END KUOTA AV ================
+
   // Child Dropdown States
   const [isChildDropdownOpen, setIsChildDropdownOpen] = useState<boolean>(false);
   const [childSearchTerm, setChildSearchTerm] = useState<string>('');
@@ -169,9 +192,75 @@ export const AudioVideoMonitorPage: React.FC<AudioVideoMonitorPageProps> = ({ sh
     }
   };
 
+  // Fetch data kuota AV hari ini untuk semua anak user
+  const loadKuotaFromApi = async () => {
+    console.groupCollapsed('%c[AudioMonitor] Fetch Kuota AV Hari Ini', 'color:#f59e0b;font-weight:600');
+    try {
+      const res = await api.get<KuotaAnakHariIni[]>('/monitor/kuota-hari-ini');
+      console.debug('Response GET /monitor/kuota-hari-ini:', res?.ok, Array.isArray(res.data) ? res.data.length : 0, 'item');
+      if (res?.ok && Array.isArray(res.data)) {
+        console.debug('Detail kuota per anak:', res.data.map(k => ({ nama: k.nama_anak, total: k.total_digunakan_menit, sisa: k.sisa_kuota_menit, status: k.status_kuota })));
+        setKuotaList(res.data);
+        // Jika ada sesi aktif dari DB (last_sesi_id + last_mode bukan idle), sinkronkan ke state UI
+        const sesiAktif = res.data.find(k => k.last_sesi_id !== null && k.last_mode !== 'idle');
+        if (sesiAktif) {
+          setCurrentActiveSesiId(sesiAktif.last_sesi_id);
+          setShowFloatingWidget(true);
+          if (sesiAktif.last_mode === 'audio_listen') {
+            setActiveMode('audio');
+            setIsAudioListening(true);
+            setIsVideoStreaming(false);
+          } else if (sesiAktif.last_mode === 'camera_live') {
+            setActiveMode('video');
+            setIsVideoStreaming(true);
+            setIsAudioListening(false);
+          }
+        }
+      } else {
+        const msg = res?.message || 'Gagal memuat data kuota monitor';
+        showToast(msg, 'error');
+        setKuotaList([]);
+      }
+    } catch (err: any) {
+      console.error('[AudioMonitor] Exception fetch kuota:', err);
+      showToast(err?.message || 'Kesalahan jaringan saat ambil kuota', 'error');
+      setKuotaList([]);
+    } finally {
+      console.groupEnd();
+    }
+  };
+
+  // Helper: Dapatkan kuota untuk anak aktif saat ini
+  const getKuotaAnakAktif = (): KuotaAnakHariIni | undefined => {
+    const idNum = Number(selectedChildId);
+    if (!idNum) return undefined;
+    return kuotaList.find(k => k.profil_anak_id === idNum);
+  };
+
   // Auto load saat component mount
   useEffect(() => {
-    loadChildrenFromApi();
+    loadChildrenFromApi().then(() => {
+      // Setelah daftar anak load success, baru load kuota
+      const sess = getSessionUser();
+      if (sess?.id) {
+        loadKuotaFromApi();
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Cleanup unmount: Jika ada sesi aktif yang belum di-stop, auto stop paksa (hindari sesi menggantung)
+  useEffect(() => {
+    return () => {
+      if (currentActiveSesiId !== null) {
+        console.warn('[AudioMonitor] Unmount dengan sesi aktif, auto stop-sesi paksa id=', currentActiveSesiId);
+        const sessId = currentActiveSesiId;
+        // Fire and forget — tidak await karena component unmount
+        api.post('/monitor/stream/stop-sesi', { sesi_id: sessId }, { authRequired: true })
+          .then(r => console.debug('[AudioMonitor] Cleanup stop-sesi response:', r.ok, r.message))
+          .catch(e => console.error('[AudioMonitor] Cleanup stop-sesi failed:', e));
+      }
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -265,25 +354,179 @@ export const AudioVideoMonitorPage: React.FC<AudioVideoMonitorPageProps> = ({ sh
     return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   };
 
-  const handleToggleAudio = () => {
+  const handleToggleAudio = async () => {
+    const profilAnakId = Number(selectedChildId);
+    if (!profilAnakId) {
+      showToast('Pilih perangkat anak terlebih dahulu', 'warning');
+      return;
+    }
     if (isAudioListening) {
-      setIsAudioListening(false);
-      showToast('Pemantauan suara 1 arah dihentikan', 'info');
+      // --- OFF: Call AV3 stop-sesi ---
+      if (currentActiveSesiId === null) {
+        setIsAudioListening(false);
+        showToast('Pemantauan suara 1 arah dihentikan', 'info');
+        return;
+      }
+      try {
+        const res = await api.post<{
+          sesi_id: number; durasi_menit_aktual: number;
+          total_digunakan_menit_setelah_update: number; sisa_kuota_menit: number; status_kuota: string;
+        }>('/monitor/stream/stop-sesi', { sesi_id: currentActiveSesiId });
+        if (res?.ok) {
+          setIsAudioListening(false);
+          setCurrentActiveSesiId(null);
+          // Update kuota state untuk anak aktif sesuai response
+          setKuotaList(prev => prev.map(k =>
+            k.profil_anak_id === profilAnakId
+              ? {
+                  ...k,
+                  digunakan_audio_menit: k.digunakan_audio_menit + (res.data?.durasi_menit_aktual ?? 1),
+                  total_digunakan_menit: res.data?.total_digunakan_menit_setelah_update ?? k.total_digunakan_menit + (res.data?.durasi_menit_aktual ?? 1),
+                  sisa_kuota_menit: res.data?.sisa_kuota_menit ?? k.sisa_kuota_menit,
+                  last_mode: 'idle',
+                  last_sesi_id: null,
+                  status_kuota: (res.data?.status_kuota ?? k.status_kuota) as any,
+                }
+              : k
+          ));
+          showToast(`Pemantauan suara dihentikan. ${res.data?.durasi_menit_aktual ?? 1} menit ditambahkan ke kuota`, 'info');
+        } else {
+          showToast(res?.message || 'Gagal menghentikan sesi audio', 'error');
+        }
+      } catch (err: any) {
+        console.error('ToggleAudio OFF error:', err);
+        showToast(err?.message || 'Kesalahan jaringan saat stop audio', 'error');
+      }
     } else {
-      setIsAudioListening(true);
-      setShowFloatingWidget(true);
-      showToast(`Menghubungkan audio senyap ke HP ${activeChild.name}...`, 'success');
+      // --- ON: Cek kuota dulu, lalu call AV2 start-sesi ---
+      const kuotaAnak = getKuotaAnakAktif();
+      if (kuotaAnak && kuotaAnak.status_kuota === 'habis') {
+        showToast(`Kuota Audio+Video hari ini untuk ${activeChild.name} SUDAH HABIS. Tidak bisa start sesi baru.`, 'error');
+        return;
+      }
+      try {
+        const res = await api.post<{
+          sesi_id: number; started_at: string; mode: string;
+          profil_anak_id: number; nama_anak: string;
+          kuota_snapshot: { total_digunakan_sebelum: number; sisa_kuota_menit: number };
+        }>('/monitor/stream/start-sesi', {
+          profil_anak_id: profilAnakId,
+          mode: 'audio_listen',
+          kualitas: audioQuality,
+        });
+        if (res?.ok && res.data?.sesi_id) {
+          setIsAudioListening(true);
+          setIsVideoStreaming(false); // matikan video jika nyala (cuma bisa satu mode)
+          setActiveMode('audio');
+          setShowFloatingWidget(true);
+          setCurrentActiveSesiId(res.data.sesi_id);
+          // Update kuota state untuk anak aktif sesuai sesi baru start
+          setKuotaList(prev => prev.map(k =>
+            k.profil_anak_id === profilAnakId
+              ? {
+                  ...k,
+                  last_mode: 'audio_listen',
+                  last_sesi_id: res.data!.sesi_id,
+                  last_started_at: res.data!.started_at,
+                }
+              : k
+          ));
+          showToast(`Menghubungkan audio senyap ke HP ${activeChild.name}... (Sesi ID: ${res.data.sesi_id})`, 'success');
+        } else {
+          showToast(res?.message || 'Gagal memulai sesi audio', 'error');
+        }
+      } catch (err: any) {
+        console.error('ToggleAudio ON error:', err);
+        showToast(err?.message || 'Kesalahan jaringan saat start audio', 'error');
+      }
     }
   };
 
-  const handleToggleVideo = () => {
+  const handleToggleVideo = async () => {
+    const profilAnakId = Number(selectedChildId);
+    if (!profilAnakId) {
+      showToast('Pilih perangkat anak terlebih dahulu', 'warning');
+      return;
+    }
     if (isVideoStreaming) {
-      setIsVideoStreaming(false);
-      showToast('Streaming kamera jarak jauh dihentikan', 'info');
+      // --- OFF: Call AV3 stop-sesi ---
+      if (currentActiveSesiId === null) {
+        setIsVideoStreaming(false);
+        showToast('Streaming kamera jarak jauh dihentikan', 'info');
+        return;
+      }
+      try {
+        const res = await api.post<{
+          sesi_id: number; durasi_menit_aktual: number;
+          total_digunakan_menit_setelah_update: number; sisa_kuota_menit: number; status_kuota: string;
+        }>('/monitor/stream/stop-sesi', { sesi_id: currentActiveSesiId });
+        if (res?.ok) {
+          setIsVideoStreaming(false);
+          setCurrentActiveSesiId(null);
+          // Update kuota state untuk anak aktif sesuai response
+          setKuotaList(prev => prev.map(k =>
+            k.profil_anak_id === profilAnakId
+              ? {
+                  ...k,
+                  digunakan_video_menit: k.digunakan_video_menit + (res.data?.durasi_menit_aktual ?? 1),
+                  total_digunakan_menit: res.data?.total_digunakan_menit_setelah_update ?? k.total_digunakan_menit + (res.data?.durasi_menit_aktual ?? 1),
+                  sisa_kuota_menit: res.data?.sisa_kuota_menit ?? k.sisa_kuota_menit,
+                  last_mode: 'idle',
+                  last_sesi_id: null,
+                  status_kuota: (res.data?.status_kuota ?? k.status_kuota) as any,
+                }
+              : k
+          ));
+          showToast(`Streaming kamera dihentikan. ${res.data?.durasi_menit_aktual ?? 1} menit ditambahkan ke kuota`, 'info');
+        } else {
+          showToast(res?.message || 'Gagal menghentikan sesi kamera', 'error');
+        }
+      } catch (err: any) {
+        console.error('ToggleVideo OFF error:', err);
+        showToast(err?.message || 'Kesalahan jaringan saat stop kamera', 'error');
+      }
     } else {
-      setIsVideoStreaming(true);
-      setShowFloatingWidget(true);
-      showToast(`Mengaktifkan kamera ${cameraFacing === 'front' ? 'depan' : 'belakang'} HP ${activeChild.name}...`, 'success');
+      // --- ON: Cek kuota dulu, lalu call AV2 start-sesi ---
+      const kuotaAnak = getKuotaAnakAktif();
+      if (kuotaAnak && kuotaAnak.status_kuota === 'habis') {
+        showToast(`Kuota Audio+Video hari ini untuk ${activeChild.name} SUDAH HABIS. Tidak bisa start sesi baru.`, 'error');
+        return;
+      }
+      try {
+        const res = await api.post<{
+          sesi_id: number; started_at: string; mode: string;
+          profil_anak_id: number; nama_anak: string;
+          kuota_snapshot: { total_digunakan_sebelum: number; sisa_kuota_menit: number };
+        }>('/monitor/stream/start-sesi', {
+          profil_anak_id: profilAnakId,
+          mode: 'camera_live',
+          kualitas: 'Standard',
+        });
+        if (res?.ok && res.data?.sesi_id) {
+          setIsVideoStreaming(true);
+          setIsAudioListening(false); // matikan audio jika nyala (cuma bisa satu mode)
+          setActiveMode('video');
+          setShowFloatingWidget(true);
+          setCurrentActiveSesiId(res.data.sesi_id);
+          // Update kuota state untuk anak aktif sesuai sesi baru start
+          setKuotaList(prev => prev.map(k =>
+            k.profil_anak_id === profilAnakId
+              ? {
+                  ...k,
+                  last_mode: 'camera_live',
+                  last_sesi_id: res.data!.sesi_id,
+                  last_started_at: res.data!.started_at,
+                }
+              : k
+          ));
+          showToast(`Mengaktifkan kamera ${cameraFacing === 'front' ? 'depan' : 'belakang'} HP ${activeChild.name}... (Sesi ID: ${res.data.sesi_id})`, 'success');
+        } else {
+          showToast(res?.message || 'Gagal memulai sesi kamera', 'error');
+        }
+      } catch (err: any) {
+        console.error('ToggleVideo ON error:', err);
+        showToast(err?.message || 'Kesalahan jaringan saat start kamera', 'error');
+      }
     }
   };
 
@@ -456,6 +699,91 @@ export const AudioVideoMonitorPage: React.FC<AudioVideoMonitorPageProps> = ({ sh
                       <span className="text-[11px] font-normal">History</span>
                     </button>
                   </div>
+
+                  {/* ================ PRIORITAS 1: PROGRESS BAR KUOTA HARI INI (LISTEN + CAMERA GABUNG 1 KUOTA) ================ */}
+                  <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                    <div className="flex items-center justify-between text-[10px]">
+                      <div className="flex items-center gap-1 text-slate-600 dark:text-slate-300 font-medium">
+                        <Clock className="w-3 h-3 text-indigo-500" />
+                        <span>Kuota Hari Ini (Listen + Camera Gabung)</span>
+                      </div>
+                      {(() => {
+                        const k = getKuotaAnakAktif();
+                        if (!k) return <span className="text-slate-400 italic">Memuat...</span>;
+                        const badgeColorMap: Record<string, string> = {
+                          unlimited: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400 border-emerald-100 dark:border-emerald-900/50',
+                          normal: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-400 border-indigo-100 dark:border-indigo-900/50',
+                          hampir_habis: 'bg-amber-50 text-amber-600 dark:bg-amber-950/60 dark:text-amber-400 border-amber-100 dark:border-amber-900/50',
+                          habis: 'bg-rose-50 text-rose-600 dark:bg-rose-950/60 dark:text-rose-400 border-rose-100 dark:border-rose-900/50',
+                        };
+                        const badgeTextMap: Record<string, string> = {
+                          unlimited: 'Unlimited 🟢',
+                          normal: 'Normal',
+                          hampir_habis: 'Hampir Habis ⚠️',
+                          habis: 'HABIS 🔴',
+                        };
+                        return (
+                          <span className={`px-1.5 py-0.5 rounded border text-[9px] font-medium uppercase ${badgeColorMap[k.status_kuota] ?? badgeColorMap.normal}`}>
+                            {badgeTextMap[k.status_kuota] ?? 'Normal'}
+                          </span>
+                        );
+                      })()}
+                    </div>
+
+                    {(() => {
+                      const k = getKuotaAnakAktif();
+                      if (!k) {
+                        return (
+                          <div className="h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden animate-pulse" />
+                        );
+                      }
+                      if (k.status_kuota === 'unlimited') {
+                        return (
+                          <div className="space-y-1">
+                            <div className="h-2 rounded-full overflow-hidden bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-100 dark:border-emerald-900/40">
+                              <div className="h-full w-full bg-gradient-to-r from-emerald-400 to-emerald-500 animate-pulse" style={{ width: '100%' }} />
+                            </div>
+                            <div className="flex items-center justify-between text-[9px] text-slate-500 dark:text-slate-400 font-normal">
+                              <span>Digunakan: {k.total_digunakan_menit} menit (Audio {k.digunakan_audio_menit}m + Video {k.digunakan_video_menit}m)</span>
+                              <span className="text-emerald-600 dark:text-emerald-400 font-medium">∞ Unlimited</span>
+                            </div>
+                          </div>
+                        );
+                      }
+                      // Warna progress bar berdasarkan status kuota
+                      const progressWarna: Record<string, string> = {
+                        normal: 'from-indigo-400 to-indigo-500',
+                        hampir_habis: 'from-amber-400 to-amber-500',
+                        habis: 'from-rose-400 to-rose-500',
+                      };
+                      const barBgWarna: Record<string, string> = {
+                        normal: 'bg-indigo-50 dark:bg-indigo-950/30 border-indigo-100 dark:border-indigo-900/40',
+                        hampir_habis: 'bg-amber-50 dark:bg-amber-950/30 border-amber-100 dark:border-amber-900/40',
+                        habis: 'bg-rose-50 dark:bg-rose-950/30 border-rose-100 dark:border-rose-900/40',
+                      };
+                      return (
+                        <div className="space-y-1">
+                          <div className={`h-2 rounded-full overflow-hidden border ${barBgWarna[k.status_kuota] ?? barBgWarna.normal}`}>
+                            <div
+                              className={`h-full bg-gradient-to-r ${progressWarna[k.status_kuota] ?? progressWarna.normal} transition-all duration-500`}
+                              style={{ width: `${Math.max(0, Math.min(100, k.persentase_terpakai))}%` }}
+                            />
+                          </div>
+                          <div className="flex items-center justify-between text-[9px] text-slate-500 dark:text-slate-400 font-normal">
+                            <span>{k.total_digunakan_menit} / {k.paket_kuota_menit_harian} menit • ({k.digunakan_audio_menit}m Audio + {k.digunakan_video_menit}m Video)</span>
+                            <span className={`font-medium ${
+                              k.status_kuota === 'habis' ? 'text-rose-600 dark:text-rose-400' :
+                              k.status_kuota === 'hampir_habis' ? 'text-amber-600 dark:text-amber-400' :
+                              'text-indigo-600 dark:text-indigo-400'
+                            }`}>
+                              Sisa: {k.sisa_kuota_menit} menit • {k.persentase_terpakai}%
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                  {/* ================ END PROGRESS BAR KUOTA ================ */}
 
                   {/* Child Searchable Dropdown Selector (Replacing Date Input) */}
                   <div className="pt-2 border-t border-slate-100 dark:border-slate-800 space-y-2">

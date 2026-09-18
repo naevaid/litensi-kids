@@ -8,6 +8,7 @@ use App\Http\Controllers\API\KontrolAplikasiController;
 use App\Http\Controllers\API\MasterPendapatanController;
 use App\Http\Controllers\API\MasterSistemController;
 use App\Http\Controllers\API\MasterUserController;
+use App\Http\Controllers\API\MonitorAVController;
 use App\Http\Controllers\API\NotifikasiController;
 use App\Http\Controllers\API\PaketController;
 use App\Http\Controllers\API\PengumumanController;
@@ -52,6 +53,20 @@ Route::prefix('v1')->group(function () {
         Route::post('/update', [ProfilController::class, 'updateProfil']);
         Route::post('/foto', [ProfilController::class, 'uploadFotoProfil']);
         Route::post('/foto/hapus', [ProfilController::class, 'hapusFotoProfil']);
+    });
+
+    // === Modul Audio & Video Monitor (AV1-AV5: Kuota Listen + Camera Gabung 1 Kolam) ===
+    // Urutan: Sebelum group aplikasi & anak (supaya tidak bentrok wildcard anak/{id})
+    Route::prefix('monitor')->group(function () {
+        // AV1 — List kuota hari ini semua anak milik user (PROGRESS BAR LISTEN+CAMERA GABUNG)
+        Route::get('/kuota-hari-ini', [MonitorAVController::class, 'getKuotaHariIni']);
+        // AV2 & AV3 — Start/Stop sesi (ROUTE SPESIFIK SEBELUM WILDCARD! tapi di sini belum ada wildcard)
+        Route::post('/stream/start-sesi', [MonitorAVController::class, 'startSesiStream']);
+        Route::post('/stream/stop-sesi', [MonitorAVController::class, 'stopSesiStream']);
+        // AV4 — Tambah kuota manual untuk anak (Override hari ini)
+        Route::post('/kuota/tambah-kuota-manual', [MonitorAVController::class, 'tambahKuotaManual']);
+        // AV5 — Riwayat sesi streaming (History Monitor)
+        Route::get('/riwayat-sesi', [MonitorAVController::class, 'riwayatSesi']);
     });
 
     // === Modul Kontrol Aplikasi (Aturan + Jadwal + Permintaan Akses) ===
