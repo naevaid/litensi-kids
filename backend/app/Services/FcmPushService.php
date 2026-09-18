@@ -25,7 +25,28 @@ class FcmPushService
 
     public function __construct()
     {
+        // === PEMBACAAN ENV DENGAN FALLBACK ===
+        // Production Laravel dengan `config:cache` MENONAKTIFKAN global `env()` (semua return NULL!).
+        // Oleh karena itu, jika env() return empty untuk FIREBASE_CREDENTIALS, fallback load file .env
+        // secara langsung via Dotenv immutable safe-load untuk membaca value mentah.
         $credPath = env('FIREBASE_CREDENTIALS');
+        $projectId = env('FCM_PROJECT_ID');
+        if (empty($credPath) && function_exists('base_path') && file_exists(base_path('.env'))) {
+            try {
+                $dotenv = \Dotenv\Dotenv::createImmutable(base_path());
+                $loadedRaw = $dotenv->safeLoad();
+                // $loadedRaw = array key value mentah dari file .env
+                if (empty($credPath) && !empty($loadedRaw['FIREBASE_CREDENTIALS'])) {
+                    $credPath = $loadedRaw['FIREBASE_CREDENTIALS'];
+                }
+                if (empty($projectId) && !empty($loadedRaw['FCM_PROJECT_ID'])) {
+                    $projectId = $loadedRaw['FCM_PROJECT_ID'];
+                }
+            } catch (\Throwable $e) {
+                // Skip fallback, biarkan ready=false (graceful degrade). Error tidak perlu throw.
+            }
+        }
+
         if (empty($credPath) || !file_exists($credPath)) {
             $this->ready = false;
             $this->lastError = 'File Service Account Firebase tidak ditemukan: ' . ($credPath ?? '(null)');
@@ -34,7 +55,6 @@ class FcmPushService
         }
 
         try {
-            $projectId = env('FCM_PROJECT_ID');
             $factory = (new Factory())->withServiceAccount($credPath);
             if (!empty($projectId)) {
                 $factory = $factory->withProjectId($projectId);
@@ -234,7 +254,7 @@ class FcmPushService
         $anakRows = ProfilAnak::where('user_id', $userId)
             ->whereNotNull('fcm_token')
             ->where('fcm_token', '!=', '')
-            ->select(['id', 'name', 'fcm_token'])
+            ->select(['id', 'nama_panggilan', 'fcm_token'])
             ->get();
 
         foreach ($anakRows as $anak) {
@@ -242,7 +262,7 @@ class FcmPushService
             // Tambah meta anak ke payload data untuk client side filter
             $perAnakData = array_merge($extraData, [
                 'profil_anak_id' => $anak->id,
-                'child_name' => $anak->name,
+                'child_name' => $anak->nama_panggilan,
             ]);
             $res = $this->pushToAndroid($anak->fcm_token, $title, $body, $perAnakData);
             if ($res['success']) {
@@ -250,7 +270,7 @@ class FcmPushService
             } else {
                 $summary['android_failed']++;
                 if (!empty($res['error'])) {
-                    $summary['errors'][] = '[android ' . ($anak->name ?? 'anak#' . $anak->id) . '] ' . $res['error'];
+                    $summary['errors'][] = '[android ' . ($anak->nama_panggilan ?? 'anak#' . $anak->id) . '] ' . $res['error'];
                 }
             }
         }
