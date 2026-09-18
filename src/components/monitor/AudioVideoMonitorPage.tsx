@@ -705,7 +705,7 @@ export const AudioVideoMonitorPage: React.FC<AudioVideoMonitorPageProps> = ({ sh
                     <div className="flex items-center justify-between text-[10px]">
                       <div className="flex items-center gap-1 text-slate-600 dark:text-slate-300 font-medium">
                         <Clock className="w-3 h-3 text-indigo-500" />
-                        <span>Kuota Hari Ini (Listen + Camera Gabung)</span>
+                        <span>Kuota Hari Ini</span>
                       </div>
                       {(() => {
                         const k = getKuotaAnakAktif();
