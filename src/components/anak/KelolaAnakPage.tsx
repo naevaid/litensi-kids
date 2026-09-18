@@ -317,7 +317,7 @@ export const KelolaAnakPage: React.FC<KelolaAnakPageProps> = ({ showToast }) => 
       console.debug(`%c[Anak] Poll #${pairingPollCount} status:`, 'color:#0d9488', data?.paired, data);
       if (data && data.paired === true) {
         // BERHASIL TERHUBUNG!
-        console.log('%c[Anak] ✅ Pairing SUCCESS! Perangkat terdeteksi terhubung.', 'color:#059669;font-weight:700', data.device_info);
+        console.log('%c[Anak] ✅ Pairing SUCCESS! Perangkat terdeteksi terhubung.', 'color:#059669;font-weight:700', data.device_info, 'name=', data.name);
         setPollingPairing(false);
         stopPairingCountdown();
         setGeneratedPairing(prev => ({
@@ -325,34 +325,44 @@ export const KelolaAnakPage: React.FC<KelolaAnakPageProps> = ({ showToast }) => 
           paired: true,
           deviceInfo: data.device_info ?? prev.deviceInfo
         }));
+
+        // 🆕 RULE BARU: Backend confirmPairing SUDAH menyimpan / auto-create row ProfilAnak ke DB!
+        // Jadi kita TIDAK USAH pindah ke Step 2 Form lagi (menghindari double POST / double data row
+        // ketika user klik "Simpan" lagi di Step 2). Sebaliknya:
+        // 1. Refresh daftar anak dari API agar row baru muncul realtime di list card
+        // 2. OTOMATIS TUTUP modal tambah perangkat
+        // 3. Tampilkan toast sukses final + informasi nama perangkat + nama anak yang tersinkron
+        const namaPerangkat = data.device_info?.nama_perangkat || 'baru';
+        const namaAnak = (typeof data.name === 'string') ? data.name.trim() : '';
+        const namaAnakDisplay = namaAnak ? ` (${namaAnak})` : '';
+
         showToast(
-          `Perangkat ${data.device_info?.nama_perangkat || 'baru'} BERHASIL TERHUBUNG! Silakan isi data anak selanjutnya.`,
+          `✅ Perangkat ${namaPerangkat}${namaAnakDisplay} BERHASIL TERHUBUNG & TERSIMPAN! Data disinkronkan otomatis dari perangkat anak.`,
           'success'
         );
-        // Isi prefill field device dari hasil pairing (jika ada device info)
+
+        // Isi prefill field device & nama dari backend (untuk state internal jika butuh)
         if (data.device_info) {
           setNewDeviceName(data.device_info.nama_perangkat || '');
           setNewDeviceModel(data.device_info.model || '');
           setNewOSVersion(`${data.device_info.os || ''} / ${data.device_info.versi_app || ''}`.trim().replace(/^ \/ /, ''));
         }
-        // (BARU) Isi prefill field Nama Anak dari response backend data.name
-        // jika field Nama Anak di Step 2 masih KOSONG (hormati input user jika sudah ketik duluan).
-        // Nilai data.name berasal dari sinkronisasi Android pairing screen (Nama Panggilan Anak).
-        if (typeof data.name === 'string') {
-          const namaTrim = data.name.trim();
-          if (namaTrim) {
-            setNewChildName(prev => {
-              if (prev && prev.trim()) {
-                console.debug('[Anak] Prefill nama anak DILEWATI: user sudah mengisi manual =', prev);
-                return prev;
-              }
-              console.debug('[Anak] ✅ Prefill Nama Anak Step 2 dari sinkronisasi Android =', namaTrim);
-              return namaTrim;
-            });
-          }
+        if (namaAnak) {
+          setNewChildName(namaAnak);
         }
-        // Auto lanjut ke Step 2: Form Data Anak
-        setTimeout(() => setAddStep('form'), 800);
+
+        // 🔴 PENTING: JANGAN pindah ke Step 2. LANGSUNG refresh list + close modal!
+        console.debug('[Anak] Auto-close modal + refresh children list dari API (Backend confirmPairing sudah save row ke DB → avoid double save).');
+        setTimeout(async () => {
+          try {
+            // Refresh list children terlebih dahulu agar card baru muncul realtime
+            await loadData();
+          } catch (_err) {
+            // Jika loadData gagal, tidak apa-apa. Tetap tutup modal saja.
+          } finally {
+            setShowAddModal(false);
+          }
+        }, 600);
         return;
       }
       setPairingPollCount(n => n + 1);
@@ -388,22 +398,19 @@ export const KelolaAnakPage: React.FC<KelolaAnakPageProps> = ({ showToast }) => 
         setNewDeviceName(dInfo.nama_perangkat || '');
         setNewDeviceModel(dInfo.model || '');
         setNewOSVersion(`${dInfo.os || ''} / ${dInfo.versi_app || ''}`.trim().replace(/^ \/ /, ''));
-        // (BARU) Prefill Nama Anak Step 2 dari simulasi pairing juga (jika ada & field masih kosong).
+        // Prefill state nama anak dari simulasi (jika ada)
         if (typeof res.data.name === 'string') {
           const namaTrim = res.data.name.trim();
-          if (namaTrim) {
-            setNewChildName(prev => {
-              if (prev && prev.trim()) {
-                console.debug('[Anak] Prefill nama anak DILEWATI (simulasi): user sudah mengisi manual =', prev);
-                return prev;
-              }
-              console.debug('[Anak] ✅ Prefill Nama Anak Step 2 dari SIMULASI pairing =', namaTrim);
-              return namaTrim;
-            });
-          }
+          if (namaTrim) setNewChildName(namaTrim);
         }
-        showToast(`Perangkat ${dInfo.nama_perangkat || 'baru'} berstatus TERHUBUNG!`, 'success');
-        setTimeout(() => setAddStep('form'), 900);
+        const namaAnak = (typeof res.data.name === 'string') ? res.data.name.trim() : '';
+        const namaAnakDisplay = namaAnak ? ` (${namaAnak})` : '';
+        showToast(`✅ Simulasi Sukses: Perangkat ${dInfo.nama_perangkat || 'baru'}${namaAnakDisplay} TERHUBUNG & TERSIMPAN otomatis!`, 'success');
+        // 🆕 SAMA RULE BARU: JANGAN pindah Step 2. LANGSUNG refresh list + close modal (simulate backend sudah save).
+        console.debug('[Anak] Simulasi paired: Auto-close modal + refresh children list (skip Step 2 to avoid double save).');
+        setTimeout(async () => {
+          try { await loadData(); } catch (_err) { /* ignore */ } finally { setShowAddModal(false); }
+        }, 600);
       } else {
         showToast(res?.message || 'Gagal simulasikan perangkat terhubung', 'error');
       }

@@ -380,7 +380,12 @@ class LitensiViewModel(application: Application) : AndroidViewModel(application)
         val opStr = AppOpsManager.OPSTR_GET_USAGE_STATS
         val uid = android.os.Process.myUid()
         val pkg = context.packageName
-        val mode = appOps.unsafeCheckOpNoThrow(opStr, uid, pkg)
+
+        val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            appOps.unsafeCheckOpNoThrow(opStr, uid, pkg)
+        } else {
+            appOps.checkOpNoThrow(opStr, uid, pkg)
+        }
         return mode == AppOpsManager.MODE_ALLOWED
     }
 
