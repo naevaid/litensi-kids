@@ -38,10 +38,10 @@ export interface SidebarMenuProps {
 
 // Submenu helper map for structured navigation
 export const SUB_MENU_MAP: Record<string, SidebarSubMenuItem[]> = {
-  inbox: [
-    { id: 'chat', label: 'Chat & Permintaan Waktu' },
-    { id: 'broadcast', label: 'Pesan Broadcast' }
-  ],
+  // [PERBAIKI sesuai permintaan user]: Menu "Pesan & Inbox" TIDAK PUNYA submenu lagi.
+  // - Submenu "Pesan Broadcast" DIHAPUS TOTAL PERMANEN.
+  // - Saat klik Pesan & Inbox LANGSUNG masuk /inbox/chat (hanya 1 halaman, tidak perlu accordion dropdown).
+  inbox: [],
   // Submenu Pengaturan Orang Tua: URUTAN BARU sesuai user request:
   // 0 = Langganan Keluarga Saya (item pertama) → 1 = Hak Akses & Wali
   // Submenu Proteksi Anak (id: konfigurasi) DIHAPUS PERMANEN sesuai permintaan user
@@ -59,7 +59,7 @@ export const PARENT_MENU_ITEMS: SidebarMenuItem[] = [
   { id: 'aplikasi', label: 'Kontrol Aplikasi', icon: <AppWindow className="w-[18px] h-[18px]" />, section: 'user' },
   { id: 'geofence', label: 'Geofences', icon: <MapPin className="w-[18px] h-[18px]" />, section: 'user' },
   { id: 'notifikasi', label: 'Riwayat Notifikasi', icon: <Bell className="w-[18px] h-[18px]" />, section: 'user' },
-  { id: 'inbox', label: 'Pesan & Inbox', icon: <MessageSquare className="w-[18px] h-[18px]" />, hasChildren: true, section: 'user' },
+  { id: 'inbox', label: 'Pesan & Inbox', icon: <MessageSquare className="w-[18px] h-[18px]" />, hasChildren: false, section: 'user' },
   { id: 'pengaturan', label: 'Pengaturan Orang Tua', icon: <Settings className="w-[18px] h-[18px]" />, hasChildren: true, section: 'user' }
 ];
 

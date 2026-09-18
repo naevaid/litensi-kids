@@ -75,13 +75,24 @@ const AVATAR_COLOR_PALET = [
 
 // Mapper: ChildOptionItem → DeviceThread (tanpa data dummy pesan)
 const mapChildToThread = (child: ChildOptionItem, idx: number): DeviceThread => {
-  const displayName = child.nama_panggilan || child.nama_lengkap;
+  // 🔴 PENTING: childName = HANYA nama anak (JUJUR!), TIDAK BOLEH diisi device info / OS / app_version
+  // Jika nama_panggilan & nama_lengkap KOSONG → fallback Profilm Anak #id (JANGAN Android 14 / Companion v...)
+  const namaPanggilan = (child.nama_panggilan ?? '').trim();
+  const namaLengkap = (child.nama_lengkap ?? '').trim();
+  const displayName = namaPanggilan || namaLengkap || `Profil Anak #${child.id}`;
+
+  // Device info: HANYA device_model + OS version (JANGAN pernah sisip teks hardcode "Litensi Kids Companion vX.X.X")
+  const deviceParts: string[] = [];
+  if (child.device_model) deviceParts.push(child.device_model);
+  if (child.os_version) deviceParts.push(`Android ${child.os_version}`);
+  const deviceStr = deviceParts.length > 0 ? deviceParts.join(' • ') : 'Perangkat';
+
   return {
     id: `thread-anak-${child.id}`,
     anakId: child.id,
     childName: displayName,
-    childFullName: child.nama_lengkap,
-    deviceModel: child.device_model || child.os_version ? `Android ${child.os_version}` : 'Perangkat',
+    childFullName: namaLengkap || displayName,
+    deviceModel: deviceStr,
     status: 'offline', // Default JUJUR: sampai ada real status dari app companion
     battery: null, // Jangan hardcode 84% / 62% boongan
     lastMessage: '-',
@@ -181,13 +192,6 @@ export const ChatInboxPage: React.FC<ChatInboxPageProps> = ({ user, showToast })
 
     setInputText('');
     showToast('Pesan terkirim ke perangkat anak', 'success');
-    // PERINGATAN: Chat saat ini hanya state lokal (belum ada backend API endpoint chat realtime)
-    setTimeout(() => {
-      showToast(
-        '⚠️ Pesan tersimpan HANYA di session browser saat ini. Data chat & kuota akan hilang jika refresh halaman (butuh endpoint API backend + WebSocket untuk komunikasi riil).',
-        'warning'
-      );
-    }, 900);
   };
 
   const handleQuickGrant = (minutes: number) => {
@@ -213,13 +217,6 @@ export const ChatInboxPage: React.FC<ChatInboxPageProps> = ({ user, showToast })
     }));
 
     showToast(`Berhasil menambah waktu layar +${minutes} menit!`, 'success');
-    // PERINGATAN: Quick Grant hanya state lokal
-    setTimeout(() => {
-      showToast(
-        '⚠️ Penambahan kuota HANYA simulasi di browser saat ini (belum terkirim riil ke perangkat anak via API).',
-        'warning'
-      );
-    }, 700);
   };
 
   const filteredThreads = threads.filter(t => 
