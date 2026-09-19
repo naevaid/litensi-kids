@@ -463,10 +463,11 @@ class LitensiRepository(
     //                        (modul poin/reward server-side belum ada, tetap gunakan nilai lokal saat ini).
     suspend fun syncChildProfileFromServer(
         anakId: Int,
-        currentChildProfileId: Long = 1L,
+        currentChildProfileId: Int = 1,
         currentPoints: Int = 0
     ) {
         require(anakId > 0) { "syncChildProfileFromServer: anakId wajib > 0 (nilai dikirim=$anakId)." }
+        require(currentChildProfileId > 0) { "syncChildProfileFromServer: currentChildProfileId wajib > 0 (nilai dikirim=$currentChildProfileId)." }
 
         // (1) Call AN4 GET detail profil anak TERBARU dari DB server.
         val profilDto = apiCall { apiService.getProfilAnak(id = anakId) }.data
@@ -481,7 +482,7 @@ class LitensiRepository(
         // NOTE: Points TETAP ambil dari currentPoints (local) karena server-side modul
         //       point/reward BELUM ADA endpoint-nya (jangan overwrite ke 0 hardcode!).
         db.childProfileDao().saveProfile(
-            com.example.data.model.ChildProfileEntity(
+            ChildProfileEntity(
                 id = currentChildProfileId,
                 points = currentPoints,
                 screenTimeRemainingMinutes = sisaWaktu,

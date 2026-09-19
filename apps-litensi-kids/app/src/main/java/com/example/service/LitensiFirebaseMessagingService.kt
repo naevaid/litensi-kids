@@ -249,7 +249,7 @@ class LitensiFirebaseMessagingService : FirebaseMessagingService() {
                         runCatching {
                             repository.syncChildProfileFromServer(
                                 anakId = anakId,
-                                currentChildProfileId = currentChild?.id ?: 1L,
+                                currentChildProfileId = currentChild?.id ?: 1,
                                 currentPoints = currentChild?.points ?: 0
                             )
                             Log.i(TAG, "FCM sync (P1 ✅): Profil Anak id=$anakId di-refresh via AN4 endpoint (kuota/battery/online state).")
