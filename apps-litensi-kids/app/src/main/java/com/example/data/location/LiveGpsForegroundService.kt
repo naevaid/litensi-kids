@@ -32,6 +32,7 @@ class LiveGpsForegroundService : Service() {
         const val NOTIF_ID = 1001
         const val CHANNEL_ID = "GPS_LIVE_SERVICE_CHANNEL"
         const val ACTION_STOP = "com.example.litensi.ACTION_STOP_LIVE_GPS_SERVICE"
+        private const val WAKELOCK_TAG = "LitensiKids:LiveGpsWakeLock"
 
         // Helper: start foreground service (dipanggil dari GPSLocationManager forceFastMode).
         // Gunakan ContextCompat.startForegroundService Android 8+ auto startForeground.
@@ -56,7 +57,6 @@ class LiveGpsForegroundService : Service() {
     // Wake lock PARCIAL: agar CPU tidak deep sleep selama GPS update 5s jalan.
     // SCREEN_BRIGHT_WAKE_LOCK dilarang (boros baterai), cukup CPU on saja.
     private var wakeLock: PowerManager.WakeLock? = null
-    private const val WAKELOCK_TAG = "LitensiKids:LiveGpsWakeLock"
 
     override fun onCreate() {
         super.onCreate()

@@ -2,6 +2,8 @@ package com.example.ui.screens
 
 import android.Manifest
 import android.app.AppOpsManager
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -92,6 +94,8 @@ import androidx.compose.ui.window.Dialog
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import com.example.data.location.GPSLocationManager
+import com.example.data.location.LiveGpsForegroundService
 import com.example.ui.theme.AmberGold
 import com.example.ui.theme.CrimsonRed
 import com.example.ui.theme.EmeraldGreen
@@ -151,6 +155,78 @@ private fun checkRealPermission(context: Context, permName: String): Boolean {
                 true
             }
         }
+        "Notifikasi GPS Realtime" -> {
+            // (1) Notifikasi app secara global ENABLED?
+            val notifManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            val appNotifEnabled = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                notifManager.areNotificationsEnabled()
+            } else {
+                true
+            }
+            if (!appNotifEnabled) return@when false
+            // (2) Channel GPS_LIVE_SERVICE_CHANNEL SUDAH ADA dan TIDAK dimatikan / di-set IMPORTANCE_NONE user?
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val channel = notifManager.getNotificationChannel(LiveGpsForegroundService.CHANNEL_ID)
+                if (channel != null) {
+                    // User block channel dengan importance none = foreground startForeground WILL CRASH / no notif visible.
+                    if (channel.importance == NotificationManager.IMPORTANCE_NONE) return@when false
+                }
+            }
+            true
+        }
+        "Aktivitas Latar Belakang" -> {
+            // Android 12+ (API 31): Feature App Standby Bucket EXEMPTED untuk allow background activity starts.
+            // Caranya: check AppOpsManager OPSTR_START_ACTIVITIES_FROM_BACKGROUND = ALLOWED
+            // Fallback untuk Android <31: selalu true karena tidak ada restriction ini.
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+                true
+            } else {
+                val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
+                runCatching {
+                    val mode = appOps.unsafeCheckOpNoThrow(
+                        AppOpsManager.OPSTR_START_ACTIVITIES_FROM_BACKGROUND,
+                        android.os.Process.myUid(),
+                        context.packageName
+                    )
+                    mode == AppOpsManager.MODE_ALLOWED
+                }.getOrDefault(true) // Jika tidak support ops, anggap aman.
+            }
+        }
+        "Peluncuran Otomatis" -> {
+            // AUTOSTART Vendor check: tidak ada standard Android check.
+            // Kita cek dengan heuristic via AppOpsManager Xiaomi (MIUI) + Build.MANUFACTURER known vendor.
+            // Jika tidak bisa check, return TRUE supaya user tidak panic (ini cuma reminder),
+            // user tetap harus aktifkan manual via pengaturan vendor.
+            val manufacturer = Build.MANUFACTURER.lowercase()
+            val knownVendor = manufacturer.contains("xiaomi") ||
+                manufacturer.contains("oppo") ||
+                manufacturer.contains("realme") ||
+                manufacturer.contains("vivo") ||
+                manufacturer.contains("oneplus") ||
+                manufacturer.contains("samsung") ||
+                manufacturer.contains("huawei") ||
+                manufacturer.contains("honor")
+            if (!knownVendor) {
+                // Stock Android / Pixel: tidak ada autostart restriction → SELALU OK.
+                true
+            } else {
+                // Untuk vendor diketahui: coba detek via AppOpsManager MIUI OP_AUTO_START = 10015
+                // Jika gagal (tidak ada ops), return FALSE supaya user diingatkan aktifkan manual.
+                runCatching {
+                    val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
+                    val MIUI_AUTOSTART_OP = 10015
+                    @Suppress("SameParameterValue")
+                    val method = appOps.javaClass.getMethod(
+                        "checkOpNoThrow",
+                        Int::class.javaPrimitiveType,
+                        Int::class.javaPrimitiveType,
+                        String::class.java
+                    )
+                    val mode = method.invoke(appOps, MIUI_AUTOSTART_OP, android.os.Process.myUid(), context.packageName) as Int
+                    mode == AppOpsManager.MODE_ALLOWED
+                }.getOrDefault(false) // Default FALSE → user reminder aktifkan manual.
+            }
+        }
         else -> false
     }
 }
@@ -194,7 +270,10 @@ fun ProfilTabContent(
                 "Penggunaan Aplikasi" to checkRealPermission(context, "Penggunaan Aplikasi"),
                 "Kamera Device" to checkRealPermission(context, "Kamera Device"),
                 "Notifikasi" to checkRealPermission(context, "Notifikasi"),
-                "Berjalan di Latar Belakang" to checkRealPermission(context, "Berjalan di Latar Belakang")
+                "Berjalan di Latar Belakang" to checkRealPermission(context, "Berjalan di Latar Belakang"),
+                "Notifikasi GPS Realtime" to checkRealPermission(context, "Notifikasi GPS Realtime"),
+                "Aktivitas Latar Belakang" to checkRealPermission(context, "Aktivitas Latar Belakang"),
+                "Peluncuran Otomatis" to checkRealPermission(context, "Peluncuran Otomatis")
             )
         )
     }
@@ -206,7 +285,10 @@ fun ProfilTabContent(
             "Penggunaan Aplikasi" to checkRealPermission(context, "Penggunaan Aplikasi"),
             "Kamera Device" to checkRealPermission(context, "Kamera Device"),
             "Notifikasi" to checkRealPermission(context, "Notifikasi"),
-            "Berjalan di Latar Belakang" to checkRealPermission(context, "Berjalan di Latar Belakang")
+            "Berjalan di Latar Belakang" to checkRealPermission(context, "Berjalan di Latar Belakang"),
+            "Notifikasi GPS Realtime" to checkRealPermission(context, "Notifikasi GPS Realtime"),
+            "Aktivitas Latar Belakang" to checkRealPermission(context, "Aktivitas Latar Belakang"),
+            "Peluncuran Otomatis" to checkRealPermission(context, "Peluncuran Otomatis")
         )
     }
 
@@ -262,6 +344,92 @@ fun ProfilTabContent(
                         Uri.parse("package:${context.packageName}")
                     )
                     context.startActivity(intent)
+                } catch (_: Exception) {
+                    openAppSettings(context)
+                }
+            }
+            "Notifikasi GPS Realtime" -> {
+                // Buka app notification settings secara spesifik (jika ada channel GPS, user bisa enable).
+                try {
+                    val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS).apply {
+                            putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                            putExtra(Settings.EXTRA_CHANNEL_ID, LiveGpsForegroundService.CHANNEL_ID)
+                        }
+                    } else {
+                        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                            data = Uri.fromParts("package", context.packageName, null)
+                        }
+                    }
+                    context.startActivity(intent)
+                } catch (_: Exception) {
+                    openAppSettings(context)
+                }
+            }
+            "Aktivitas Latar Belakang" -> {
+                // Tidak ada standard API langsung. Buka App Info (Background activity launch ada di Battery / Special app access Android 12+).
+                // Try ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION fallback → ke App Info.
+                try {
+                    val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                        data = Uri.fromParts("package", context.packageName, null)
+                    }
+                    context.startActivity(intent)
+                } catch (_: Exception) {
+                    openAppSettings(context)
+                }
+            }
+            "Peluncuran Otomatis" -> {
+                // Buka pengaturan autostart vendor (jika intent vendor diketahui, fallback ke App Info).
+                var intentVendor: Intent? = null
+                val manufacturer = Build.MANUFACTURER.lowercase()
+                when {
+                    manufacturer.contains("xiaomi") || manufacturer.contains("redmi") || manufacturer.contains("poco") -> {
+                        intentVendor = Intent().apply {
+                            component = android.content.ComponentName(
+                                "com.miui.securitycenter",
+                                "com.miui.permcenter.autostart.AutoStartManagementActivity"
+                            )
+                        }
+                    }
+                    manufacturer.contains("oppo") || manufacturer.contains("realme") || manufacturer.contains("oneplus") -> {
+                        intentVendor = Intent().apply {
+                            component = android.content.ComponentName(
+                                "com.coloros.safecenter",
+                                "com.coloros.safecenter.permission.startup.StartupAppListActivity"
+                            )
+                        }
+                    }
+                    manufacturer.contains("vivo") || manufacturer.contains("iqoo") -> {
+                        intentVendor = Intent().apply {
+                            component = android.content.ComponentName(
+                                "com.vivo.permissionmanager",
+                                "com.vivo.permissionmanager.activity.BgStartUpManagerActivity"
+                            )
+                        }
+                    }
+                    manufacturer.contains("huawei") || manufacturer.contains("honor") -> {
+                        intentVendor = Intent().apply {
+                            component = android.content.ComponentName(
+                                "com.huawei.systemmanager",
+                                "com.huawei.systemmanager.optimize.process.ProtectActivity"
+                            )
+                        }
+                    }
+                    manufacturer.contains("samsung") -> {
+                        intentVendor = Intent().apply {
+                            component = android.content.ComponentName(
+                                "com.samsung.android.lool",
+                                "com.samsung.android.sm.ui.battery.BatteryActivity"
+                            )
+                        }
+                    }
+                }
+                try {
+                    if (intentVendor != null && context.packageManager.resolveActivity(intentVendor, 0) != null) {
+                        context.startActivity(intentVendor)
+                    } else {
+                        openAppSettings(context)
+                    }
                 } catch (_: Exception) {
                     openAppSettings(context)
                 }
@@ -689,6 +857,9 @@ fun ProfilTabContent(
                         "Kamera Device" -> "Verifikasi visual darurat"
                         "Notifikasi" -> "Terima peringatan & info orang tua"
                         "Berjalan di Latar Belakang" -> "Proteksi latar belakang & SOS aktif"
+                        "Notifikasi GPS Realtime" -> "Live GPS kirim lokasi walau layar terkunci"
+                        "Aktivitas Latar Belakang" -> "Buka app & kirim data otomatis saat dibutuhkan"
+                        "Peluncuran Otomatis" -> "Workers & GPS auto start saat HP restart boot"
                         else -> "Proteksi aktif perangkat"
                     }
 
@@ -1024,6 +1195,33 @@ fun ProfilTabContent(
                 listOf(
                     "1. Klik 'Aktifkan' untuk membuka Pengaturan Baterai Sistem.",
                     "2. Pilih opsi 'Tanpa Pembatasan' (Unrestricted / Ignore Battery Optimization)."
+                )
+            )
+            "Notifikasi GPS Realtime" -> Triple(
+                Icons.Default.LocationOn,
+                "Izin Notifikasi untuk Layanan GPS Realtime Foreground DIPERLUKAN agar Android TIDAK mematikan update GPS ketika layar terkunci (mode Doze). Jika dinonaktifkan → Live GPS 30mnt hanya berjalan saat layar ON.",
+                listOf(
+                    "1. Klik 'Aktifkan' untuk membuka Pengaturan Notifikasi Channel GPS Live.",
+                    "2. Pastikan sakelar channel 'Layanan Live GPS Realtime' DALAM POSISI ON.",
+                    "3. Jangan ubah ke mode Penting/Silent (wajib Default/Low agar notif tray visible)."
+                )
+            )
+            "Aktivitas Latar Belakang" -> Triple(
+                Icons.Default.Security,
+                "Izin Aktivitas Latar Belakang (Android 12+) diperlukan agar aplikasi bisa memunculkan layar penting (contoh SOS Darurat / Overlay batas waktu) ketika hanya berjalan di latar belakang tanpa user buka app.",
+                listOf(
+                    "1. Klik 'Aktifkan' → masuk ke Pengaturan Aplikasi → Informasi Aplikasi LitensiKids.",
+                    "2. Masuk ke menu 'Baterai' atau 'Special App Access' / 'Akses Khusus Aplikasi'.",
+                    "3. Cari submenu 'Aktivitas yang dimulai di latar belakang' → aktifkan toggle Izinkan."
+                )
+            )
+            "Peluncuran Otomatis" -> Triple(
+                Icons.Default.Refresh,
+                "Izin Peluncuran Otomatis (Auto-start Vendor) sangat krusial untuk HP Android non-Stock (Oppo/Realme/OnePlus/Xiaomi/Vivo/Samsung/Huawei). Jika tidak diaktifkan → WorkManager GPS dan Telemetry TIDAK BERJALAN setelah HP restart / app di-swipe recent apps user.",
+                listOf(
+                    "1. Klik 'Aktifkan' — akan diarahkan ke setting Auto-start vendor (jika tidak ada → ke Info Aplikasi).",
+                    "2. Cari menu 'Peluncuran Otomatis' / 'Auto Launch' / 'Mulai Otomatis' / 'Boot Kelola'.",
+                    "3. ATUR LitensiKids ke OPSI 'Izinkan' / 'Auto Start ON' — JANGAN 'Tanya Setiap Kali' / 'Tidak Diizinkan'."
                 )
             )
             else -> Triple(
