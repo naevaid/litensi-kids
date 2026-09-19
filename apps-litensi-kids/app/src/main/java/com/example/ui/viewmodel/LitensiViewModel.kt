@@ -33,6 +33,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -201,38 +202,57 @@ class LitensiViewModel(application: Application) : AndroidViewModel(application)
                     val pin = state.pinPairing
                     val qr = state.qrPairingCode
                     if (anakId != null && (!pin.isNullOrBlank() || !qr.isNullOrBlank())) {
-                        Firebase.messaging.token.addOnSuccessListener { freshToken ->
+                        // ==========================================================================
+                        // (F5.3) FORCE GET & UPLOAD FCM TOKEN SEKALI SETELAH PAIRING TERSAMBUNG
+                        // --------------------------------------------------------------------------
+                        // REFACTORED (Sep 2026): HAPUS DEPRECATED FirebaseMessaging.getToken() Task
+                        //   Java callback (addOnSuccessListener) yang deprecated di Firebase BOM 34+.
+                        //   Ganti dengan idiomatic Kotlin Coroutine Task.await() via extension
+                        //   kotlinx-coroutines-play-services.
+                        //
+                        // ALASAN FORCE GET TETAP DIPERTAHANKAN:
+                        //   onNewToken() Firebase service TIDAK AKAN DIPANGGIL untuk token
+                        //   yang SUDAH ADA di cache Firebase lokal (kasus: app sudah terinstall
+                        //   sebelum service di-upgrade, atau user baru selesai pairing pertama kali
+                        //   tapi token cache sudah ada sejak install awal). Force get disini memastikan
+                        //   token langsung ter-upload ke backend TANPA menunggu onNewToken berikutnya.
+                        // Cover BOTH KASUS: (a) Re-open app setelah restart (sudah paired dari sebelumnya)
+                        //                   (b) Fresh pairing flow BARU (setelah Room save state, collect
+                        //                       akan ter-trigger lagi dengan state baru isConnected=true).
+                        // ==========================================================================
+                        runCatching {
+                            // Non-deprecated: Kotlin suspend via Task.await() coroutines-play-services.
+                            Firebase.messaging.token.await()
+                        }.onSuccess { freshToken ->
                             if (freshToken.isNotBlank()) {
-                                viewModelScope.launch {
-                                    runCatching {
-                                        repository.updateFcmTokenAnak(
-                                            token = freshToken,
-                                            id = anakId,
-                                            pairingPin = pin,
-                                            qrPairingCode = qr
-                                        )
-                                    }.onSuccess { result ->
-                                        Log.d(
-                                            "LitensiViewModel-FCM",
-                                            "Force upload FCM token BERHASIL (after pairing): " +
-                                            "tokenLen=${result.fcmTokenLength}, " +
-                                            "updatedAt=${result.updatedAt}"
-                                        )
-                                    }.onFailure { err ->
-                                        Log.w(
-                                            "LitensiViewModel-FCM",
-                                            "Force upload FCM token GAGAL (non-fatal, retry via onNewToken nanti): ${err.message}",
-                                            err
-                                        )
-                                    }
+                                runCatching {
+                                    repository.updateFcmTokenAnak(
+                                        token = freshToken,
+                                        id = anakId,
+                                        pairingPin = pin,
+                                        qrPairingCode = qr
+                                    )
+                                }.onSuccess { result ->
+                                    Log.d(
+                                        "LitensiViewModel-FCM",
+                                        "Force upload FCM token BERHASIL (after pairing): " +
+                                        "tokenLen=${result.fcmTokenLength}, " +
+                                        "updatedAt=${result.updatedAt}"
+                                    )
+                                }.onFailure { err ->
+                                    Log.w(
+                                        "LitensiViewModel-FCM",
+                                        "Force upload FCM token GAGAL (non-fatal, retry via onNewToken nanti): ${err.message}",
+                                        err
+                                    )
                                 }
                             } else {
                                 Log.w("LitensiViewModel-FCM", "Force get FCM token: token kosong dari Firebase — skip upload.")
                             }
-                        }.addOnFailureListener { err ->
+                        }.onFailure { err ->
                             Log.w(
                                 "LitensiViewModel-FCM",
-                                "Firebase.messaging.token gagal diambil (non-fatal): ${err.message}",
+                                "Firebase.messaging.token gagal diambil via await() (non-fatal, Google Play Services unavailable?): ${err.message}",
                                 err
                             )
                         }
