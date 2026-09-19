@@ -34,6 +34,9 @@ interface GoogleMapsMonitorCanvasProps {
   showToast: (msg: string, type?: 'success' | 'info' | 'error' | 'warning') => void;
   onSimulateMove: () => void;
   isSimulatingMove: boolean;
+  // (G5.3) Props BARU Live GPS update polling real 30 detik high frequency 5s
+  onForceLiveUpdate: () => void;
+  forceLiveActive: boolean;
   childrenOverlay?: React.ReactNode;
 }
 
@@ -101,6 +104,8 @@ export const GoogleMapsMonitorCanvas: React.FC<GoogleMapsMonitorCanvasProps> = (
   showToast,
   onSimulateMove,
   isSimulatingMove,
+  onForceLiveUpdate,
+  forceLiveActive,
   childrenOverlay
 }) => {
   const apiKey = ((import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY as string) || '';
@@ -300,16 +305,37 @@ export const GoogleMapsMonitorCanvas: React.FC<GoogleMapsMonitorCanvasProps> = (
 
         <div className="h-4 w-px bg-slate-700 mx-0.5" />
 
-        {/* Simulate GPS Movement */}
+        {/* (G5.3 BARU) Force Live GPS Update High Frequency 5s polling 30 detik */}
+        <button
+          type="button"
+          onClick={onForceLiveUpdate}
+          className={`px-2.5 py-1 text-xs font-medium rounded-lg transition-colors flex items-center gap-1 cursor-pointer
+            ${forceLiveActive
+              ? 'bg-rose-950/70 text-rose-300 border border-rose-700/60 animate-pulse shadow-[0_0_12px_rgba(244,63,94,0.25)]'
+              : 'text-orange-300 hover:bg-orange-950/60'}
+          `}
+          title={forceLiveActive
+            ? 'MODE LIVE AKTIF! Polling tiap 5 detik selama 30 detik. Marker maps bergerak realtime untuk perjalanan mobil/motor.'
+            : 'Aktifkan Mode Live GPS! 30 detik polling maps tiap 5 detik realtime. Cocok untuk track perjalanan anak.'}
+        >
+          <Radio className={`w-3 h-3 ${forceLiveActive ? 'text-rose-400 animate-ping' : 'text-orange-400'}`} />
+          <span className={`${forceLiveActive ? 'font-bold' : ''}`}>
+            {forceLiveActive ? '● LIVE 5s (30d)' : '🚀 Live GPS 30d'}
+          </span>
+        </button>
+
+        <div className="h-4 w-px bg-slate-700 mx-0.5" />
+
+        {/* Simulate GPS Movement (DEBUG MODE SAJA — bukan GPS real!) */}
         <button
           type="button"
           onClick={onSimulateMove}
           disabled={isSimulatingMove}
-          className="px-2.5 py-1 text-xs font-medium text-emerald-300 hover:bg-emerald-950/60 rounded-lg transition-colors flex items-center gap-1 cursor-pointer disabled:opacity-50"
-          title="Perbarui koordinat live Google Maps melalui satelit GPS"
+          className="px-2.5 py-1 text-xs font-medium text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded-lg transition-colors flex items-center gap-1 cursor-pointer disabled:opacity-50"
+          title="[DEBUG SIMULASI SAJA] Pindahkan posisi marker secara RANDOM secara lokal di browser. BUKAN data GPS dari HP anak."
         >
           <RefreshCw className={`w-3 h-3 ${isSimulatingMove ? 'animate-spin' : ''}`} />
-          <span>GPS Live Update</span>
+          <span>Simulasi</span>
         </button>
       </div>
 

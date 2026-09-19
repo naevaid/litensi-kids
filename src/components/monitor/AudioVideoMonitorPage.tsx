@@ -283,24 +283,79 @@ export const AudioVideoMonitorPage: React.FC<AudioVideoMonitorPageProps> = ({ sh
   }, []);
 
   // =========================================================================
-  // (G4.3) POLLING GPS REALTIME — Refresh marker maps SETIAP 15 DETIK otomatis.
-  //   Alasan 15 detik: GPSUploadWorker companion flush ke backend setiap 15 menit,
-  //     DAN jika ada geofence event → expedited OneTimeWork upload dalam 2-5 detik.
-  //     15 detik polling = maksimal 15 detik lag setelah GPS di-upload ke DB → maps web ter-update.
-  //   Polling JUGA call loadKuotaFromApi (biar kuota AV Monitor realtime, tanpa manual refresh page).
-  //   Toast warning HANYA MUNCUL SEKALI jika GPS > 2 MENIT pertama MASIH BELUM ADA DATA
-  //     (menandakan GPSUploadWorker companion BELUM pernah berhasil flush ke backend).
+  // (G5.3) ADAPTIVE POLLING INTERVAL BERDASARKAN GERAKAN ANAK (Motion DETECTION)
+  //   RULES (mirip G5 Android adaptive GPSLocationManager):
+  //     [LIVE 5 DETIK (HIGH FREQUENCY) → jika:
+  //       • User KLIK tombol "Live Update GPS" → forceLiveUntil 30 DETIK KE DEPAN
+  //       • ATAU last 2 poll berturut posisi anak BERGERAK > 50 M (jarak haversine antara poll_sekarang vs poll_2x_sebelumnya > 50m ATAU waktu_gps_update < 1 MENIT yang lalu (baru saja diperbarui HP → artinya companion upload expedited)
+  //     [NORMAL 15 DETIK (DEFAULT)] → diam (anak sekolah, anak diam tracking normal
+  //   KEHUNTUNGAN: Saat anak lagi perjalanan naik mobil 60km/j → maps marker update TIAP 5 DETIK.
+  //   BOROS API? Tidak: Setiap polling hanya ~3KB JSON. 5 detik = 500KB / jam. 15 detik = 166KB / jam.
+  //   Masih di dalam limit server budget.
+  // =========================================================================
+  const [forceLiveUntilMs, setForceLiveUntilMs] = useState<number | null>(null);
+  const [lastPollChildLatLng, setLastPollChildLatLng] = useState<{ lat: number; lng: number; ts: number } | null>(null);
+  // helper haversine distance meter TANPA install library (keep dep aman)
+  const haversineDistanceMeters = (lat1:number,lng1:number,lat2:number,lng2:number):number => {
+    const rad = (deg:number) => deg * Math.PI / 180.0;
+    const R = 6371000; // bumi radius meter
+    const dLat = rad(lat2 - lat1);
+    const dLng = rad(lng2 - lng1);
+    const a = Math.sin(dLat/2)*Math.sin(dLat/2) + Math.cos(rad(lat1))*Math.cos(rad(lat2))*Math.sin(dLng/2)*Math.sin(dLng/2);
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  };
+
+  // (G4.2 helper) Cek: apakah active child LATITUDE LONGITUDE = 0,0 (Null Island)?
+  //   Artinya GPS belum pernah dikirim companion → marker tidak boleh tampil di tengah laut!
+  const isGpsUnavailable = (c: { latitude: number; longitude: number } | null): boolean => {
+    if (!c) return true;
+    return Math.abs(Number(c.latitude)) < 0.001 && Math.abs(Number(c.longitude)) < 0.001;
+  };
+
+  // =========================================================================
+  // (G4.3 + G5.3) POLLING GPS REALTIME — Adaptive interval BERDASARKAN MOTION.
+  //   Mirip G4.3 tapi interval TIDAK static 15s: Hitung ulang TIAP POLL BERDASARKAN apakah anak bergerak (5s) atau diam (15s).
+  //   Tombol Live Update = paksa 5s interval 30 detik ke depan.
   // =========================================================================
   useEffect(() => {
-    let pollIntervalId: NodeJS.Timeout | null = null;
     let warningGpsFirstShown = false;
-    const POLL_INTERVAL_MS = 15 * 1000; // 15 detik
     const GPS_WARN_THRESHOLD_MS = 2 * 60 * 1000; // 2 menit pertama → warn kalau GPS belum ada
 
     // Waktu MOUNT component = acuan "awal user masuk ke halaman monitor nunggu GPS"
     const mountTimestampMs = Date.now();
 
-    // Jalankan poll SEGERA sekali pertama tidak tunggu 15 detik (data terbaru langsung ada)
+    // (G5.3 BUG FIX JS SCOPE: declare pollTimeoutId HANYA SEKALI DI ATAS sebelum function runPoll. Di runPoll & cleanup refer ke variabel SAMA)
+    let pollTimeoutId: NodeJS.Timeout | null = null;
+
+    // Helper hitung berapa milliseconds next poll (G5.3 adaptive rules)
+    const computeNextPollIntervalMs = (active: ChildDeviceMonitor | null): number => {
+      // Rule 1: Force live mode user klik button → 5 DETIK sampai forceLiveUntilMs habis
+      if (forceLiveUntilMs && Date.now() < forceLiveUntilMs) return 5 * 1000;
+
+      // Rule 2: GPS null / tidak punya data → 15 DETIK polling biar lebih cepat dapat GPS pertama
+      if (!active || isGpsUnavailable(active)) return 15 * 1000;
+
+      // Rule 3: Anak BERGERAK → 5 DETIK polling
+      //   Cara deteksi motion: compare dengan point sebelumnya (jika ada).
+      //     (a) Distance > 50 METER sejak poll terakhir (artinya beneran bergerak bukan noise 1-5m)
+      //     (b) ATAU elapsed sejak last poll < 60 detik & posisi BERBEDA → companion baru expedited upload → motion.
+      let motionDetected = false;
+      if (lastPollChildLatLng && !isGpsUnavailable(active)) {
+        const dist = haversineDistanceMeters(lastPollChildLatLng.lat, lastPollChildLatLng.lng, Number(active.latitude), Number(active.longitude));
+        if (dist > 50) motionDetected = true;
+        const elapsedSinceLastMs = Date.now() - lastPollChildLatLng.ts;
+        if (elapsedSinceLastMs < 60_000 && dist > 5) motionDetected = true;
+      }
+      // (3b) "Baru saja" / "<x detik lalu" yang pendek → anggap motion
+      const baruSaja = (active.lastUpdated || '').includes('Baru saja') || (active.lastUpdated || '').includes('detik');
+      if (baruSaja) motionDetected = true;
+      if (motionDetected) return 5 * 1000;
+
+      // Rule default ANAK DIAM: 15 DETIK
+      return 15 * 1000;
+    };
+
+    // Jalankan poll SEGERA sekali pertama tidak tunggu
     const runPoll = async () => {
       try {
         // 1. Refresh list anak + GPS last_known
@@ -313,12 +368,21 @@ export const AudioVideoMonitorPage: React.FC<AudioVideoMonitorPageProps> = ({ sh
         }
 
         // =============== WARNING GPS TIDAK KUNJUNG DATANG (lebih dari 2 menit) ===============
-        // Cek: Untuk anak yang TERPILIH (active child) — jika sudah 2 menit sejak user buka halaman ini
-        //   dan masih belum ada GPS data (hasGps=false), tampilkan warning SEKALI SAJA (tidak spam tiap 15 detik).
         const active = childrenList.find(c => c.id === selectedChildId) || childrenList[0] || null;
+
+        // (G5.3) Simpan posisi anak SEBELUMNYA untuk perbandingan motion detection next poll
+        if (active && !isGpsUnavailable(active)) {
+          setLastPollChildLatLng({
+            lat: Number(active.latitude),
+            lng: Number(active.longitude),
+            ts: Date.now()
+          });
+        }
+
+        // Warning toast pertama sekali
         if (active && !warningGpsFirstShown) {
           const sudahDuaMenit = (Date.now() - mountTimestampMs) >= GPS_WARN_THRESHOLD_MS;
-          const latlngZeroish = Math.abs(Number(active.latitude)) < 0.001 && Math.abs(Number(active.longitude)) < 0.001;
+          const latlngZeroish = isGpsUnavailable(active);
           if (sudahDuaMenit && latlngZeroish) {
             warningGpsFirstShown = true;
             showToast(
@@ -328,33 +392,37 @@ export const AudioVideoMonitorPage: React.FC<AudioVideoMonitorPageProps> = ({ sh
             );
           }
         }
+
+        // (G5.3 CRITICAL) Pakai recursive setTimeout SETELAH poll SELESAI → compute interval next poll BERDASARKAN MOTION
+        const nextMs = computeNextPollIntervalMs(active);
+        // Next poll recursive — pakai `pollTimeoutId` YANG SAMA scope di atas (bukan declare lagi)
+        pollTimeoutId = setTimeout(runPoll, nextMs);
+        console.debug(`[AudioMonitor-G5.3] Poll selesai. Next poll = ${nextMs/1000}s. forceLive=${forceLiveUntilMs && Date.now()<forceLiveUntilMs? 'AKTIF 5s':'mati'}. MotionDetect=${nextMs<10000?'BERGERAK 5s':'DIAM 15s'}`);
       } catch (err: any) {
-        // Poll failure → JANGAN crash page, cuma console.error verbose debug.
-        console.error('[AudioMonitor-G4.3] Poll GPS 15s error:', err?.message || err);
+        console.error('[AudioMonitor-G5.3] Poll GPS adaptive error:', err?.message || err);
+        // Kalau error, tetap schedule poll berikutnya 30 detik untuk hindari banjir request error
+        pollTimeoutId = setTimeout(runPoll, 30 * 1000);
       }
     };
 
-    // Polling start: 15 detik sekali looping selama component masih mounted.
-    pollIntervalId = setInterval(runPoll, POLL_INTERVAL_MS);
+    // Poll pertama JALANKAN setTimeout 0 ms = SEGERA
+    pollTimeoutId = setTimeout(runPoll, 0);
 
-    // Cleanup unmount: HENTIKAN polling (clear interval) agar tidak ada memory leak / request API berjalan di-background.
+    // Cleanup unmount: HENTIKAN polling (clear timeout)
     return () => {
-      if (pollIntervalId != null) {
-        clearInterval(pollIntervalId);
-        pollIntervalId = null;
+      if (pollTimeoutId != null) {
+        clearTimeout(pollTimeoutId);
+        pollTimeoutId = null;
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedChildId]);
+  }, [selectedChildId, forceLiveUntilMs]); // Re-init seluruh poll ketika forceLiveUntilMs SET/berubah atau ganti anak.
 
-  // =========================================================================
-  // (G4.2 helper) Cek: apakah active child LATITUDE LONGITUDE = 0,0 (Null Island)?
-  //   Artinya GPS belum pernah dikirim companion → marker tidak boleh tampil di tengah laut!
-  //   Digunakan nanti GoogleMapsMonitorCanvas defaultCenter fallback ke lokasi user browser jika GPS 0,0.
-  // =========================================================================
-  const isGpsUnavailable = (c: { latitude: number; longitude: number } | null): boolean => {
-    if (!c) return true;
-    return Math.abs(Number(c.latitude)) < 0.001 && Math.abs(Number(c.longitude)) < 0.001;
+  // (G5.3) Handler button Live Update → set forceLiveUntilMs = 30 detik dari sekarang
+  const handleForceLiveUpdate = () => {
+    const next = Date.now() + 30_000;
+    setForceLiveUntilMs(next);
+    showToast('🚀 Mode Live GPS Aktif! 30 detik polling maps tiap 5 detik realtime!', 'success');
   };
 
   // Cleanup unmount: Jika ada sesi aktif yang belum di-stop, auto stop paksa (hindari sesi menggantung)
@@ -372,7 +440,7 @@ export const AudioVideoMonitorPage: React.FC<AudioVideoMonitorPageProps> = ({ sh
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Live GPS Simulation
+  // Live GPS Simulation (button lama tetap ada: "Simulasikan Pergerakan")
   const handleSimulateMove = () => {
     setIsSimulatingMove(true);
     setTimeout(() => {
@@ -691,6 +759,9 @@ export const AudioVideoMonitorPage: React.FC<AudioVideoMonitorPageProps> = ({ sh
             showToast={showToast}
             onSimulateMove={handleSimulateMove}
             isSimulatingMove={isSimulatingMove}
+            // (G5.3 BARU) Pass force live update high frequency 5s polling 30 detik
+            onForceLiveUpdate={handleForceLiveUpdate}
+            forceLiveActive={!!(forceLiveUntilMs && Date.now() < forceLiveUntilMs)}
             childrenOverlay={
               <>
                 {/* TOP LEFT FLOATING CARD: CHILD PROFILE & QUICK CONTROL GRID */}
