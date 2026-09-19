@@ -15,6 +15,11 @@ import com.google.android.gms.location.LocationRequest
 import com.google.android.gms.location.LocationResult
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 // (G3.7) Helper untuk mengelola FusedLocationProviderClient Google Play Services Location.
 // Config: PRIORITY_HIGH_ACCURACY (GPS satelit akurasi tinggi ~5m), interval 5 menit, displacement 10m.
@@ -33,6 +38,12 @@ object GPSLocationManager {
     private var fusedLocationClient: FusedLocationProviderClient? = null
     private var locationCallback: LocationCallback? = null
     private var currentProfilAnakId: Int? = null
+
+    // Coroutine scope dedicated untuk GPSLocationManager (IO dispatcher untuk Room DB operations).
+    // SupervisorJob: jika satu job gagal, job lain tidak ikut di-cancel.
+    // Di-cancel saat removeUpdates() dipanggil (unpair/disconnect) untuk menghindari memory leak.
+    private var supervisorJob: Job = SupervisorJob()
+    private val ioScope: CoroutineScope = CoroutineScope(Dispatchers.IO + supervisorJob)
 
     // Mulai request update lokasi berkelanjutan. Dipanggil saat ViewModel detect isConnected=true pairing sukses.
     fun requestLocationUpdates(context: Context, profilAnakId: Int) {
@@ -96,14 +107,17 @@ object GPSLocationManager {
                     createdAt = System.currentTimeMillis()
                 )
 
-                // Insert ke Room via DAO (runCatching → jika DB error tidak crash app, cuma log).
-                val insertedId = runCatching {
-                    db.gpsCacheDao().insertGpsPoint(entity)
-                }.getOrElse { err ->
-                    Log.e(TAG, "Gagal insert GPS cache ke Room: ${err.message}")
-                    return@getOrElse -1L
+                // Insert ke Room via DAO di IO coroutine scope (insertGpsPoint adalah suspend function).
+                // runCatching → jika DB error tidak crash app, cuma log.
+                ioScope.launch {
+                    val insertedId = runCatching {
+                        db.gpsCacheDao().insertGpsPoint(entity)
+                    }.getOrElse { err ->
+                        Log.e(TAG, "Gagal insert GPS cache ke Room: ${err.message}")
+                        return@launch
+                    }
+                    Log.d(TAG, "  Insert GPS cache success id=$insertedId, battery=$battery%")
                 }
-                Log.d(TAG, "  Insert GPS cache success id=$insertedId, battery=$battery%")
             }
         }
 
@@ -135,6 +149,11 @@ object GPSLocationManager {
         fusedLocationClient = null
         locationCallback = null
         currentProfilAnakId = null
+
+        // Cancel semua job pending di coroutine scope (jangan sampai ada leak DB insert yang tidak selesai).
+        // Re-create baru SupervisorJob + scope agar jika user pair ulang tanpa kill app → ioScope masih active.
+        runCatching { supervisorJob.cancel() }
+        supervisorJob = SupervisorJob()
     }
 
     // Hitung battery level integer 0-100 via BatteryManager (sama pattern LitensiTelemetryWorker L77).
