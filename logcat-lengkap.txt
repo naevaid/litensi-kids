@@ -1,0 +1,322 @@
+2026-09-19 11:14:04.044 19011-19011 OnBackInvokedCallback   com.parental.litensikids             W  OnBackInvokedCallback is not enabled for the application.
+                                                                                                    Set 'android:enableOnBackInvokedCallback="true"' in the application manifest.
+2026-09-19 11:14:04.085 19011-22838 Quality                 com.parental.litensikids             I  stackInfo :----- pid 19011 at 2026-09-19 11:14:04.061 -----;Cmd line: com.parental.litensikids;"main" prio=5 tid=2 RUNNABLE sysTid=19011;  at android.graphics.Paint.nGetRunAdvance(Native Method);  at android.graphics.Paint.getRunAdvance(Paint.java:3133);  at android.graphics.Paint.getRunAdvance(Paint.java:3165);  at android.text.TextLine.getRunAdvance(TextLine.java:926);  at android.text.TextLine.handleText(TextLine.java:979);  at android.text.TextLine.handleRun(TextLine.java:1229);  at android.text.TextLine.measureRun(TextLine.java:555);  at android.text.TextLine.measure(TextLine.java:423);  at android.text.TextLine.metrics(TextLine.java:323);  at android.text.Layout.measurePara(Layout.java:2223);  at android.text.Layout.getDesiredWidthWithLimit(Layout.java:221);  at android.text.Layout.getDesiredWidth(Layout.java:200);  at android.text.Layout.getDesiredWidth(Layout.java:189);  at androidx.compose.ui.text.android.LayoutIntrinsics.getMaxIntrinsicWidth(LayoutIntrinsics.android.kt:87);  at androidx.compose.ui.text.platform.AndroidParagraphIntrinsics.getMaxIntrinsicWidth(AndroidParagraphIntrinsics.android.kt:63);  at androidx.compose.foundation.text.modifiers.ParagraphLayoutCache.layoutText-K40F9xA(ParagraphLayoutCache.kt:281);  at androidx.compose.foundation.text.modifiers.ParagraphLayoutCache.layoutWithConstraints-K40F9xA(ParagraphLayoutCache.kt:183);  at androidx.compose.foundation.text.modifiers.TextStringSimpleNode.measure-3p2s80s(TextStringSimpleNode.kt:348);  at androidx.compose.ui.node.LayoutModifierNodeCoordinator.measure-BRTryo0(LayoutModifierNodeCoordinator.kt:188);  at androidx.compose.ui.graphics.SimpleGraphicsLayerModifier.measure-3p2s80s(GraphicsLayerModifier.kt:646);  at androidx.compose.ui.node.LayoutModifierNodeCoordinator.measure-BRTryo0(LayoutModifierNodeCoordinator.kt:188);  at androidx.compose.ui.node.LayoutNodeLayoutDelegate$performMeasureBlock$1.invoke(LayoutNodeLayoutDelegate.kt:316);  at androidx.compose.ui.node.LayoutNodeLayoutDelegate$performMeasureBlock$1.invoke(LayoutNodeLayoutDelegate.kt:315);  at androidx.compose.runtime.snapshots.Snapshot$Companion.observe(Snapshot.kt:503);  at androidx.compose.runtime.snapshots.SnapshotStateObserver$ObservedScopeMap.observe(SnapshotStateObserver.kt:502);  at androidx.compose.runtime.snapshots.SnapshotStateObserver.observeReads(SnapshotStateObserver.kt:258);  at androidx.compose.ui.node.OwnerSnapshotObserver.observeReads$ui_release(OwnerSnapshotObserver.kt:133);  at androidx.compose.ui.node.OwnerSnapshotObserver.observeMeasureSnapshotReads$ui_release(OwnerSnapshotObserver.kt:113);  at androidx.compose.ui.node.LayoutNodeLayoutDelegate.performMeasure-BRTryo0(LayoutNodeLayoutDelegate.kt:1775);  at androidx.compose.ui.node.LayoutNodeLayoutDelegate.access$performMeasure-BRTryo0(LayoutNodeLayoutDelegate.kt:40);
+2026-09-19 11:14:04.164 19011-19011 BufferQueueConsumer     com.parental.litensikids             D  [](id:4a4300000000,api:0,p:-1,c:19011) connect: controlledByApp=false
+2026-09-19 11:14:04.165 19011-19011 ExtensionsLoader        com.parental.litensikids             D  createInstance(64bit) : createExtendedFactory
+2026-09-19 11:14:04.166 19011-19011 ExtensionsLoader        com.parental.litensikids             D  Opened libSchedAssistExtImpl.so
+2026-09-19 11:14:04.168 19011-19011 ZoomWindowDecorView     com.parental.litensikids             V  setLastReportedMergedConfiguration mZoomDisplayHeight: 2400 getDecorView.55828877
+2026-09-19 11:14:04.170 19011-22839 AdrenoGLES-0            com.parental.litensikids             I  QUALCOMM build                   : c5f0e23, I9972db7aac
+                                                                                                    Build Date                       : 04/28/21
+                                                                                                    OpenGL ES Shader Compiler Version: EV031.32.02.10
+                                                                                                    Local Branch                     : 
+                                                                                                    Remote Branch                    : 
+                                                                                                    Remote Branch                    : 
+                                                                                                    Reconstruct Branch               : 
+2026-09-19 11:14:04.170 19011-22839 AdrenoGLES-0            com.parental.litensikids             I  Build Config                     : S P 10.0.7 AArch64
+2026-09-19 11:14:04.170 19011-22839 AdrenoGLES-0            com.parental.litensikids             I  Driver Path                      : /vendor/lib64/egl/libGLESv2_adreno.so
+2026-09-19 11:14:04.182 19011-22839 AdrenoGLES-0            com.parental.litensikids             I  PFP: 0x016ee190, ME: 0x00000000
+2026-09-19 11:14:04.214 19011-22839 BufferQueueProducer     com.parental.litensikids             D  [VRI[MainActivity]#0(BLAST Consumer)0](id:4a4300000000,api:1,p:19011,c:19011) connect: api=1 producerControlledByApp=true
+2026-09-19 11:14:04.216 19011-19011 VRI[MainActivity]       com.parental.litensikids             D  registerCallbacksForSync syncBuffer=false
+2026-09-19 11:14:04.432 19011-22839 VRI[MainActivity]       com.parental.litensikids             D  Received frameCommittedCallback lastAttemptedDrawFrameNum=1 didProduceBuffer=true syncBuffer=false
+2026-09-19 11:14:04.435 19011-22839 Parcel                  com.parental.litensikids             W  Expecting binder but got null!
+2026-09-19 11:14:04.436 19011-19011 VRI[MainActivity]       com.parental.litensikids             D  draw finished.
+2026-09-19 11:14:04.436 19011-19011 ANR_LOG                 com.parental.litensikids             E  >>> msg's executing time is too long
+2026-09-19 11:14:04.436 19011-19011 ANR_LOG                 com.parental.litensikids             E  Blocked msg = { when=-2s116ms what=0 target=android.view.Choreographer$FrameHandler callback=android.view.Choreographer$FrameDisplayEventReceiver } , cost  = 1874 ms
+2026-09-19 11:14:04.436 19011-19011 ANR_LOG                 com.parental.litensikids             E  >>>Current msg List is:
+2026-09-19 11:14:04.436 19011-19011 ANR_LOG                 com.parental.litensikids             E  Current msg <1> = { when=-15h20m48s127ms what=0 target=android.view.ViewRootImpl$ViewRootHandler callback=android.view.ViewRootImpl$$ExternalSyntheticLambda2 }
+2026-09-19 11:14:04.436 19011-19011 ANR_LOG                 com.parental.litensikids             E  Current msg <2> = { when=-15h20m48s127ms what=0 target=android.view.ViewRootImpl$ViewRootHandler callback=android.view.ViewRootImpl$9$$ExternalSyntheticLambda0 }
+2026-09-19 11:14:04.436 19011-19011 ANR_LOG                 com.parental.litensikids             E  Current msg <3> = { when=-1s926ms what=0 target=android.view.ViewRootImpl$ViewRootHandler callback=android.view.ViewRootImpl$7 }
+2026-09-19 11:14:04.437 19011-19011 ANR_LOG                 com.parental.litensikids             E  Current msg <4> = { when=-1s843ms what=0 target=android.os.Handler callback=kotlinx.coroutines.internal.DispatchedContinuation }
+2026-09-19 11:14:04.437 19011-19011 ANR_LOG                 com.parental.litensikids             E  Current msg <5> = { when=-1s839ms what=0 target=android.os.Handler callback=androidx.compose.ui.platform.AndroidUiDispatcher$dispatchCallback$1 }
+2026-09-19 11:14:04.437 19011-19011 ANR_LOG                 com.parental.litensikids             E  Current msg <6> = { when=-1s702ms what=0 target=android.app.ActivityThread$H callback=android.app.LoadedApk$ServiceDispatcher$RunConnection }
+2026-09-19 11:14:04.437 19011-19011 ANR_LOG                 com.parental.litensikids             E  Current msg <7> = { when=-1s464ms what=0 target=android.os.Handler callback=androidx.emoji2.text.EmojiCompatInitializer$LoadEmojiCompatRunnable }
+2026-09-19 11:14:04.437 19011-19011 ANR_LOG                 com.parental.litensikids             E  Current msg <8> = { when=-732ms what=131 target=android.app.ActivityThread$H obj=android.app.ActivityThread$ProviderRefCount@18b3ad5 }
+2026-09-19 11:14:04.437 19011-19011 ANR_LOG                 com.parental.litensikids             E  Current msg <9> = { when=-551ms barrier=1 }
+2026-09-19 11:14:04.437 19011-19011 ANR_LOG                 com.parental.litensikids             E  Current msg <10> = { when=-525ms what=0 target=android.os.Handler callback=kotlinx.coroutines.internal.DispatchedContinuation }
+2026-09-19 11:14:04.437 19011-19011 ANR_LOG                 com.parental.litensikids             E  >>>CURRENT MSG DUMP OVER<<<
+2026-09-19 11:14:04.437 19011-19011 Quality                 com.parental.litensikids             I  ActivityThread: doFrame delay 1876 com.parental.litensikids 19011
+2026-09-19 11:14:04.438 19011-22836 Quality                 com.parental.litensikids             I  Blocked msg = Package name: com.parental.litensikids [ schedGroup: 5 schedPolicy: 0 ] process the message: { when=-2s118ms what=0 target=android.view.Choreographer$FrameHandler callback=android.view.Choreographer$FrameDisplayEventReceiver } took 1876 ms
+2026-09-19 11:14:04.439 19011-22594 OpenGLRenderer          com.parental.litensikids             I  Davey! duration=2115ms; Flags=1, FrameTimelineVsyncId=25659576, IntendedVsync=55246011788897, Vsync=55246245832735, InputEventId=0, HandleInputStart=55246254037934, AnimationStart=55246254053194, PerformTraversalsStart=55246254228923, DrawStart=55247908616214, FrameDeadline=55246028455563, FrameInterval=55246253599392, FrameStartTime=16717417, SyncQueued=55247945384183, SyncStart=55247945590068, IssueDrawCommandsStart=55247946663506, SwapBuffers=55248123097673, FrameCompleted=55248127531423, DequeueBufferDuration=19011, QueueBufferDuration=404531, GpuCompleted=55248127531423, SwapBuffersCompleted=55248124293975, DisplayPresentTime=0, CommandSubmissionCompleted=55248123097673, 
+2026-09-19 11:14:04.455 19011-19011 Choreographer           com.parental.litensikids             I  Skipped 110 frames!  The application may be doing too much work on its main thread.
+2026-09-19 11:14:04.455 19011-19011 Quality                 com.parental.litensikids             I  Skipped: false 110 cost 1851.0526 refreshRate 16717591 bit true processName com.parental.litensikids
+2026-09-19 11:14:04.465 19011-19011 ViewRootImplExtImpl     com.parental.litensikids             D  onDisplayChanged 0 for VRI android.view.ViewRootImpl@3f3fda8
+2026-09-19 11:14:04.466 19011-19011 VRI[MainActivity]       com.parental.litensikids             D  onFocusEvent true
+2026-09-19 11:14:04.472 19011-19011 VRI[MainActivity]       com.parental.litensikids             D  registerCallbacksForSync syncBuffer=false
+2026-09-19 11:14:04.493 19011-22839 VRI[MainActivity]       com.parental.litensikids             D  Received frameCommittedCallback lastAttemptedDrawFrameNum=2 didProduceBuffer=true syncBuffer=false
+2026-09-19 11:14:04.493 19011-19011 VRI[MainActivity]       com.parental.litensikids             D  draw finished.
+2026-09-19 11:14:04.506 19011-19011 Quality                 com.parental.litensikids             I  Skipped: true 3 cost 34.281277 refreshRate 11145242 bit true processName com.parental.litensikids
+2026-09-19 11:14:04.529 19011-19011 LitensiViewModel-G3     com.parental.litensikids             I  TelemetryWorker schedulePeriodic KEEP done.
+2026-09-19 11:14:04.531 19011-19011 GPSUploadWorker         com.parental.litensikids             I  schedulePeriodic: GPS periodic worker 15min dijadwalkan/keep existing.
+2026-09-19 11:14:04.531 19011-19011 LitensiViewModel-G3     com.parental.litensikids             I  GPSUploadWorker schedulePeriodic KEEP done.
+2026-09-19 11:14:04.533 19011-19011 GPSLocationManager      com.parental.litensikids             W  requestLocationUpdates WARNING: ACCESS_BACKGROUND_LOCATION MISSING (SDK >=29). Tracking cuma jalan saat app TERBUKA/foreground.
+2026-09-19 11:14:04.533 19011-19011 LitensiViewModel-G3     com.parental.litensikids             W  GPSLocationManager onPermissionMissing triggered → set toastMessage error banner merah!
+2026-09-19 11:14:04.540 19011-19011 GPSLocationManager      com.parental.litensikids             I  requestLocationUpdates ADAPTIVE: START MODE=STATIONARY interval=5m (awal diam). Switch otomatis ke 30s jika speed≥10.0 km/j. anak=16
+2026-09-19 11:14:04.540 19011-19011 LitensiViewModel-G3     com.parental.litensikids             I  GPSLocationManager requestLocationUpdates started for anak=16 (dengan onPermissionMissing callback error)
+2026-09-19 11:14:04.543 19011-19011 LitensiViewModel-G3     com.parental.litensikids             I  GeofenceManager loadAndRegisterAllZones triggered (async IO, user=1)
+2026-09-19 11:14:04.587 19011-19011 Quality                 com.parental.litensikids             I  Skipped: true 6 cost 69.99154 refreshRate 11145308 bit true processName com.parental.litensikids
+2026-09-19 11:14:04.597 19011-22939 okhttp.OkHttpClient     com.parental.litensikids             I  --> GET https://parental.naeva.id/api/v1/chat/16/messages?user_id=1&page=1&perPage=50
+2026-09-19 11:14:04.598 19011-22939 okhttp.OkHttpClient     com.parental.litensikids             I  --> END GET
+2026-09-19 11:14:04.672 19011-22944 okhttp.OkHttpClient     com.parental.litensikids             I  --> GET https://parental.naeva.id/api/v1/geofence?user_id=1
+2026-09-19 11:14:04.672 19011-22944 okhttp.OkHttpClient     com.parental.litensikids             I  --> END GET
+2026-09-19 11:14:04.770 19011-19011 OnBackInvokedCallback   com.parental.litensikids             W  OnBackInvokedCallback is not enabled for the application.
+                                                                                                    Set 'android:enableOnBackInvokedCallback="true"' in the application manifest.
+2026-09-19 11:14:04.799 19011-22939 FeatureFlagsImplExport  com.parental.litensikids             W  java.lang.NoClassDefFoundError: Class not found using the boot class loader; no stack trace available
+2026-09-19 11:14:05.125 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  --> POST https://parental.naeva.id/api/v1/anak/16/fcm-token
+2026-09-19 11:14:05.125 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  Content-Type: application/x-www-form-urlencoded
+2026-09-19 11:14:05.126 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  Content-Length: 206
+2026-09-19 11:14:05.126 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  pairing_pin=616841&qr_pairing_code=LTN-VEU-7698-SEC&fcm_token=fI95o1HfRYGu_sydkui9an%3AAPA91bHJj5UEBO6ZXw0ZFy6VwZ4gvpvGASjt41aufrPNL-cQFcNwsU-L1VSPeCEIp20BWCi8Voej7BAEZ6-2vxKhVCuUUZ-iScTtdsRNO6ZNv6xcRjRwPjY
+2026-09-19 11:14:05.127 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  --> END POST (206-byte body)
+2026-09-19 11:14:05.156 19011-19011 Choreographer           com.parental.litensikids             I  Skipped 50 frames!  The application may be doing too much work on its main thread.
+2026-09-19 11:14:05.157 19011-19011 Quality                 com.parental.litensikids             I  Skipped: false 50 cost 561.7205 refreshRate 11146418 bit true processName com.parental.litensikids
+2026-09-19 11:14:05.244 19011-22594 OpenGLRenderer          com.parental.litensikids             I  Davey! duration=722ms; Flags=0, FrameTimelineVsyncId=25659878, IntendedVsync=55248208726140, Vsync=55248275597988, InputEventId=0, HandleInputStart=55248279358662, AnimationStart=55248279376527, PerformTraversalsStart=55248464391058, DrawStart=55248464651995, FrameDeadline=55248241093670, FrameInterval=55248278717673, FrameStartTime=11145308, SyncQueued=55248769340954, SyncStart=55248769448454, IssueDrawCommandsStart=55248770057204, SwapBuffers=55248926033141, FrameCompleted=55248931429964, DequeueBufferDuration=38750, QueueBufferDuration=267239, GpuCompleted=55248931429964, SwapBuffersCompleted=55248926721370, DisplayPresentTime=0, CommandSubmissionCompleted=55248926033141, 
+2026-09-19 11:14:05.259 19011-19011 Quality                 com.parental.litensikids             I  Skipped: false 8 cost 95.831375 refreshRate 11141921 bit true processName com.parental.litensikids
+2026-09-19 11:14:05.287 19011-22944 okhttp.OkHttpClient     com.parental.litensikids             I  <-- 200 https://parental.naeva.id/api/v1/geofence?user_id=1 (614ms)
+2026-09-19 11:14:05.288 19011-22944 okhttp.OkHttpClient     com.parental.litensikids             I  date: Sat, 19 Sep 2026 04:14:04 GMT
+2026-09-19 11:14:05.288 19011-22944 okhttp.OkHttpClient     com.parental.litensikids             I  content-type: application/json
+2026-09-19 11:14:05.288 19011-22944 okhttp.OkHttpClient     com.parental.litensikids             I  server: cloudflare
+2026-09-19 11:14:05.289 19011-22944 okhttp.OkHttpClient     com.parental.litensikids             I  nel: {"report_to":"cf-nel","success_fraction":0.0,"max_age":604800}
+2026-09-19 11:14:05.289 19011-22944 okhttp.OkHttpClient     com.parental.litensikids             I  cache-control: no-cache, private
+2026-09-19 11:14:05.289 19011-22944 okhttp.OkHttpClient     com.parental.litensikids             I  vary: Origin
+2026-09-19 11:14:05.289 19011-22944 okhttp.OkHttpClient     com.parental.litensikids             I  x-frame-options: SAMEORIGIN
+2026-09-19 11:14:05.289 19011-22944 okhttp.OkHttpClient     com.parental.litensikids             I  x-content-type-options: nosniff
+2026-09-19 11:14:05.290 19011-22944 okhttp.OkHttpClient     com.parental.litensikids             I  x-xss-protection: 1; mode=block
+2026-09-19 11:14:05.290 19011-22944 okhttp.OkHttpClient     com.parental.litensikids             I  cf-cache-status: DYNAMIC
+2026-09-19 11:14:05.290 19011-22944 okhttp.OkHttpClient     com.parental.litensikids             I  server-timing: cfCacheStatus;desc="DYNAMIC"
+2026-09-19 11:14:05.290 19011-22944 okhttp.OkHttpClient     com.parental.litensikids             I  server-timing: cfEdge;dur=31,cfOrigin;dur=39
+2026-09-19 11:14:05.290 19011-22944 okhttp.OkHttpClient     com.parental.litensikids             I  report-to: {"group":"cf-nel","max_age":604800,"endpoints":[{"url":"https://a.nel.cloudflare.com/report/v4?s=xF8QsfLExGnDZqXjENIpLqqpEl4mbRAMzEikhKIwH5W9w2rdOGB1xE%2BDw6Mz0jJmxH8oQ4U5KPTMkiFGPnDX%2FXHzfWTzWH7E1dqwxtGf67CC35DpOxfrZGsZSjznraU46Amwrxgd50wFTnqW%2FfLmCA%3D%3D"}]}
+2026-09-19 11:14:05.291 19011-22944 okhttp.OkHttpClient     com.parental.litensikids             I  cf-ray: a3d5c2ec2e0f3fcc-SIN
+2026-09-19 11:14:05.291 19011-22944 okhttp.OkHttpClient     com.parental.litensikids             I  alt-svc: h3=":443"; ma=86400
+2026-09-19 11:14:05.292 19011-19011 GPSLocationManager      com.parental.litensikids             D  onLocationResult[STATIONARY]: GPS fix speed=0,0km/j lat=-6.8141883 lng=110.8216613 accuracy=28.1m time=1789791231336
+2026-09-19 11:14:05.298 19011-22944 okhttp.OkHttpClient     com.parental.litensikids             I  {"success":true,"data":[{"id":1,"user_id":1,"name":"Rumah","category":"home","address":"Lokasi Geofence (-6.81449, 110.82145)","latitude":"-6.8144854","longitude":"110.8214474","radius_meters":40,"assigned_children":["1","14","12"],"notify_on_enter":true,"notify_on_exit":true,"status":"active","color":null,"last_triggered":null,"created_at":"2026-09-18T14:29:43.000000Z","updated_at":"2026-09-19T02:17:25.000000Z","user":{"id":1,"name":"Test","email":"orangtua@litensikids.id","phone":null,"role":"Master","email_verified_at":"2026-09-17T23:24:56.000000Z","avatar_url":null,"active_plan":"family_pro","active_plan_label":"Family Pro","children_count":0,"devices_count":0,"expires_at":"2030-01-01T00:00:00.000000Z","status":"active","last_active":"2026-09-18T10:35:16.000000Z","web_fcm_token":"fV6DdSzqU1gOpDJKUVCwQw:APA91bEeyG_xX0S0Rta7l_ZHX4KtI3Z5j5jVJ1A7DWUNjMzMw6y7_2yRcMjRiRTYhb1RRTwch_Ou8G8kjlD1fYBH760gMo0q2litQk0S0MwjqNpbrLAIBzs","web_fcm_token_updated_at":"2026-09-19 03:58:28","created_at":"2026-09-17T23:24:56.000000Z","updated_at":"2026-09-19T03:58:28.000000Z"}}]}
+2026-09-19 11:14:05.299 19011-22944 okhttp.OkHttpClient     com.parental.litensikids             I  <-- END HTTP (1077-byte body)
+2026-09-19 11:14:05.303 19011-19011 Quality                 com.parental.litensikids             I  Skipped: true 3 cost 39.596672 refreshRate 11139900 bit true processName com.parental.litensikids
+2026-09-19 11:14:05.304 19011-22939 okhttp.OkHttpClient     com.parental.litensikids             I  <-- 200 https://parental.naeva.id/api/v1/chat/16/messages?user_id=1&page=1&perPage=50 (706ms)
+2026-09-19 11:14:05.305 19011-22939 okhttp.OkHttpClient     com.parental.litensikids             I  date: Sat, 19 Sep 2026 04:14:04 GMT
+2026-09-19 11:14:05.305 19011-22939 okhttp.OkHttpClient     com.parental.litensikids             I  content-type: application/json
+2026-09-19 11:14:05.305 19011-22939 okhttp.OkHttpClient     com.parental.litensikids             I  server: cloudflare
+2026-09-19 11:14:05.305 19011-22939 okhttp.OkHttpClient     com.parental.litensikids             I  nel: {"report_to":"cf-nel","success_fraction":0.0,"max_age":604800}
+2026-09-19 11:14:05.306 19011-22939 okhttp.OkHttpClient     com.parental.litensikids             I  cache-control: no-cache, private
+2026-09-19 11:14:05.306 19011-22939 okhttp.OkHttpClient     com.parental.litensikids             I  vary: Origin
+2026-09-19 11:14:05.306 19011-22939 okhttp.OkHttpClient     com.parental.litensikids             I  x-frame-options: SAMEORIGIN
+2026-09-19 11:14:05.306 19011-22939 okhttp.OkHttpClient     com.parental.litensikids             I  x-content-type-options: nosniff
+2026-09-19 11:14:05.306 19011-22939 okhttp.OkHttpClient     com.parental.litensikids             I  x-xss-protection: 1; mode=block
+2026-09-19 11:14:05.306 19011-22939 okhttp.OkHttpClient     com.parental.litensikids             I  cf-cache-status: DYNAMIC
+2026-09-19 11:14:05.307 19011-22939 okhttp.OkHttpClient     com.parental.litensikids             I  server-timing: cfCacheStatus;desc="DYNAMIC"
+2026-09-19 11:14:05.307 19011-22939 okhttp.OkHttpClient     com.parental.litensikids             I  server-timing: cfEdge;dur=16,cfOrigin;dur=42
+2026-09-19 11:14:05.307 19011-22939 okhttp.OkHttpClient     com.parental.litensikids             I  report-to: {"group":"cf-nel","max_age":604800,"endpoints":[{"url":"https://a.nel.cloudflare.com/report/v4?s=ZXbzYk8oFRRSm7pb%2BtGUD8LWHPBf73ZXzHBgXXy7uXh89cX3V39UfVaq6pwbuPQ1GR%2BhVlD2990v%2Blzf2pX%2FeFAycz7b7q%2BsO%2Bru%2BkKAJTgKJjtD7Oq3GcxTM8Xa3Y%2BHOtOOO4Yfv8%2B%2BCep0DFCbuw%3D%3D"}]}
+2026-09-19 11:14:05.307 19011-22939 okhttp.OkHttpClient     com.parental.litensikids             I  cf-ray: a3d5c2ec6e593fcc-SIN
+2026-09-19 11:14:05.307 19011-22939 okhttp.OkHttpClient     com.parental.litensikids             I  alt-svc: h3=":443"; ma=86400
+2026-09-19 11:14:05.314 19011-22939 okhttp.OkHttpClient     com.parental.litensikids             I  {"success":true,"data":{"list":[],"total":0,"page":1,"per_page":50,"has_next":false,"next_cursor":null,"anak":{"id":16,"name":"Test Anak 1","avatar":"icon:Smile","device_model":"OP4F25L1","battery":64}}}
+2026-09-19 11:14:05.314 19011-22939 okhttp.OkHttpClient     com.parental.litensikids             I  <-- END HTTP (203-byte body)
+2026-09-19 11:14:05.334 19011-22873 GPSLocationManager      com.parental.litensikids             V    Insert GPS cache success id=1, battery=70%
+2026-09-19 11:14:05.334 19011-22873 GPSLocationManager      com.parental.litensikids             I  🚀 EXPEDITED GPS UPLOAD TRIGGER (trigger: debounce 5detik point baru (UPLOAD NOW — MAX LATENCY 5d REQUEST USER)). counter=0 lastSchedule=1789791245334 now=1789791245334 → call GPSUploadWorker.enqueueExpeditedOneTime(ctx)
+2026-09-19 11:14:05.338 19011-22876 GeofenceManager         com.parental.litensikids             I  loadAndRegisterAllZones: TIDAK ADA zona aktif untuk anak=16 dari total 1 zona user=1. Skip add geofence (GPS tracking tetap jalan tanpa geofence trigger expedited).
+2026-09-19 11:14:05.344 19011-22873 GPSUploadWorker         com.parental.litensikids             I  enqueueExpeditedOneTime: GPS expedited di-enqueue (geofence trigger).
+2026-09-19 11:14:05.378 19011-22886 WM-SystemJobScheduler   com.parental.litensikids             D  Scheduling work ID 1811a660-ee38-4b11-a1df-b4bbb2582a96Job ID 9
+2026-09-19 11:14:05.388 19011-22886 WM-GreedyScheduler      com.parental.litensikids             D  Starting work for 1811a660-ee38-4b11-a1df-b4bbb2582a96
+2026-09-19 11:14:05.396 19011-22886 WM-Processor            com.parental.litensikids             D  Processor: processing WorkGenerationalId(workSpecId=1811a660-ee38-4b11-a1df-b4bbb2582a96, generation=0)
+2026-09-19 11:14:05.406 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  <-- 200 https://parental.naeva.id/api/v1/anak/16/fcm-token (277ms)
+2026-09-19 11:14:05.406 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  date: Sat, 19 Sep 2026 04:14:04 GMT
+2026-09-19 11:14:05.407 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  content-type: application/json
+2026-09-19 11:14:05.407 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  server: cloudflare
+2026-09-19 11:14:05.407 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  nel: {"report_to":"cf-nel","success_fraction":0.0,"max_age":604800}
+2026-09-19 11:14:05.407 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  cache-control: no-cache, private
+2026-09-19 11:14:05.408 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  vary: Origin
+2026-09-19 11:14:05.408 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  x-frame-options: SAMEORIGIN
+2026-09-19 11:14:05.409 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  x-content-type-options: nosniff
+2026-09-19 11:14:05.409 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  x-xss-protection: 1; mode=block
+2026-09-19 11:14:05.410 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  cf-cache-status: DYNAMIC
+2026-09-19 11:14:05.410 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  server-timing: cfCacheStatus;desc="DYNAMIC"
+2026-09-19 11:14:05.410 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  server-timing: cfEdge;dur=9,cfOrigin;dur=91
+2026-09-19 11:14:05.410 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  report-to: {"group":"cf-nel","max_age":604800,"endpoints":[{"url":"https://a.nel.cloudflare.com/report/v4?s=%2B1QJT89bbuXn3bRPh6tMSiGL7WAQqwRkEyEFPRb05RMD9lhnzcaMLRTnm0FGnGm8dAUewi6tlHJyLNQ%2B1XVQNn%2BUu8FZgARkbUALwBTodRZwya2l9OBwHb1DFduQkvz1sWc33HRqnR%2FQrRthAyB0eA%3D%3D"}]}
+2026-09-19 11:14:05.411 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  cf-ray: a3d5c2ec6e563fcc-SIN
+2026-09-19 11:14:05.411 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  alt-svc: h3=":443"; ma=86400
+2026-09-19 11:14:05.414 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  {"success":true,"message":"Token FCM perangkat anak berhasil diupdate","data":{"id":16,"fcm_token_length":142,"token_revoked":false,"updated_at":"2026-09-19T04:14:04.314702Z"}}
+2026-09-19 11:14:05.414 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  <-- END HTTP (176-byte body)
+2026-09-19 11:14:05.539 19011-19011 Quality                 com.parental.litensikids             I  Skipped: false 20 cost 230.9691 refreshRate 11139900 bit true processName com.parental.litensikids
+2026-09-19 11:14:05.573 19011-22570 tal.litensikids         com.parental.litensikids             I  Compiler allocated 4869KB to compile void android.view.ViewRootImpl.performTraversals()
+2026-09-19 11:14:05.595 19011-19011 WM-WorkerWrapper        com.parental.litensikids             D  Starting work for com.example.data.work.GPSUploadWorker
+2026-09-19 11:14:05.597 19011-19011 LitensiViewModel-FCM    com.parental.litensikids             D  Force upload FCM token BERHASIL (after pairing): tokenLen=142, updatedAt=2026-09-19T04:14:04.314702Z
+2026-09-19 11:14:05.599 19011-19011 Quality                 com.parental.litensikids             I  Skipped: false 5 cost 57.615585 refreshRate 11139651 bit true processName com.parental.litensikids
+2026-09-19 11:14:05.609 19011-19011 WM-SystemJobService     com.parental.litensikids             D  onStartJob for WorkGenerationalId(workSpecId=1811a660-ee38-4b11-a1df-b4bbb2582a96, generation=0)
+2026-09-19 11:14:05.618 19011-22885 WM-Processor            com.parental.litensikids             D  Work WorkGenerationalId(workSpecId=1811a660-ee38-4b11-a1df-b4bbb2582a96, generation=0) is already enqueued for processing
+2026-09-19 11:14:05.655 19011-22876 GPSUploadWorker         com.parental.litensikids             I  GPSUploadWorker: Start flush 1 pending → id=16
+2026-09-19 11:14:05.698 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  --> POST https://parental.naeva.id/api/v1/anak/16/gps
+2026-09-19 11:14:05.699 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  Content-Type: application/x-www-form-urlencoded
+2026-09-19 11:14:05.699 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  Content-Length: 209
+2026-09-19 11:14:05.700 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  pairing_pin=616841&qr_pairing_code=LTN-VEU-7698-SEC&latitude=-6.8141883&longitude=110.8216613&captured_at=2026-09-19T04%3A13%3A51.336Z&accuracy_meters=28&battery_level=70&altitude_m=39.0&is_mock_detected=false
+2026-09-19 11:14:05.700 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  --> END POST (209-byte body)
+2026-09-19 11:14:05.706 19011-19011 Quality                 com.parental.litensikids             I  Skipped: true 1 cost 19.211088 refreshRate 11141112 bit true processName com.parental.litensikids
+2026-09-19 11:14:05.725 19011-19011 Quality                 com.parental.litensikids             I  Skipped: true 1 cost 16.059027 refreshRate 11141076 bit true processName com.parental.litensikids
+2026-09-19 11:14:05.866 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  <-- 200 https://parental.naeva.id/ (162ms)
+2026-09-19 11:14:05.867 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  date: Sat, 19 Sep 2026 04:14:04 GMT
+2026-09-19 11:14:05.868 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  content-type: text/html; charset=utf-8
+2026-09-19 11:14:05.869 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  server: cloudflare
+2026-09-19 11:14:05.870 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  last-modified: Sat, 19 Sep 2026 04:08:22 GMT
+2026-09-19 11:14:05.871 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  nel: {"report_to":"cf-nel","success_fraction":0.0,"max_age":604800}
+2026-09-19 11:14:05.871 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  server-timing: cfCacheStatus;desc="DYNAMIC"
+2026-09-19 11:14:05.871 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  server-timing: cfEdge;dur=5,cfOrigin;dur=14
+2026-09-19 11:14:05.872 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  x-frame-options: SAMEORIGIN
+2026-09-19 11:14:05.873 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  x-content-type-options: nosniff
+2026-09-19 11:14:05.873 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  x-xss-protection: 1; mode=block
+2026-09-19 11:14:05.874 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  report-to: {"group":"cf-nel","max_age":604800,"endpoints":[{"url":"https://a.nel.cloudflare.com/report/v4?s=fjEj2KiAvOPz5%2Fu7bEkaxOLS5caYog3Pn3MgyDHVxxeWBNLejfLbC%2BLLKnbk2aUTqxsU3gd3NrUW1WHi%2B6mt1R50mCUazG9JB%2B0aKYoPB6d0ItM4sF%2BF1IDvIc7wjiDr0QNLGIkLj0VWAkmVuzMFSQ%3D%3D"}]}
+2026-09-19 11:14:05.875 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  cf-cache-status: DYNAMIC
+2026-09-19 11:14:05.875 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  vary: accept-encoding
+2026-09-19 11:14:05.876 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  cf-ray: a3d5c2f04a5f3fcc-SIN
+2026-09-19 11:14:05.886 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  alt-svc: h3=":443"; ma=86400
+2026-09-19 11:14:05.891 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  <!doctype html>
+2026-09-19 11:14:05.892 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  <html lang="id">
+2026-09-19 11:14:05.892 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I    <head>
+2026-09-19 11:14:05.892 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I      <meta charset="UTF-8" />
+2026-09-19 11:14:05.892 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I      <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+2026-09-19 11:14:05.892 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I      <title>Litensi Kids - Bimbingan Digital Anak</title>
+2026-09-19 11:14:05.892 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  
+2026-09-19 11:14:05.892 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I      <!-- Favicon (disimpan di public/ → Vite resolve otomatis ke /favicon.ico) -->
+2026-09-19 11:14:05.892 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I      <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+2026-09-19 11:14:05.892 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I      <link rel="shortcut icon" type="image/x-icon" href="/favicon.ico" />
+2026-09-19 11:14:05.892 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I      <link rel="apple-touch-icon" href="/favicon.ico" />
+2026-09-19 11:14:05.892 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I      <script type="module" crossorigin src="/assets/index-CpAaqfcB.js"></script>
+2026-09-19 11:14:05.892 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I      <link rel="stylesheet" crossorigin href="/assets/index-BL_5ccla.css">
+2026-09-19 11:14:05.892 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I    </head>
+2026-09-19 11:14:05.892 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I    <body>
+2026-09-19 11:14:05.892 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I      <div id="root"></div>
+2026-09-19 11:14:05.893 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I    <script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/v31edd6df95cf4e85bb4c19e7a9bdbcba1788362987495" integrity="sha512-iIg7k2xntmwu6/uSb5tpc/hySgZc4eoL31yB29W6tJFo2akwjPWcEqnCEdJvGexCL0KEQwVYv5BlowfhVz26hg==" data-cf-beacon='{"version":"2024.11.0","token":"c08f4ebbaa13478d93c15f065ab3fe0c","r":1,"spa":2}' crossorigin="anonymous"></script>
+2026-09-19 11:14:05.893 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  </body>
+2026-09-19 11:14:05.893 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  </html>
+2026-09-19 11:14:05.893 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  
+2026-09-19 11:14:05.893 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  <-- END HTTP (1069-byte body)
+2026-09-19 11:14:05.905 19011-22876 GPSUploadWorker         com.parental.litensikids             W    !! Gagal upload id=1 retry=1. Retry next run: Use JsonReader.setLenient(true) to accept malformed JSON at path $
+2026-09-19 11:14:05.910 19011-22876 GPSUploadWorker         com.parental.litensikids             W  GPSUploadWorker: Ada 1 selesai, tapi ada yang gagal → Retry exponential backoff.
+2026-09-19 11:14:05.933 19011-19011 Quality                 com.parental.litensikids             I  Skipped: false 17 cost 191.03255 refreshRate 11141506 bit true processName com.parental.litensikids
+2026-09-19 11:14:05.959 19011-22883 WM-WorkerWrapper        com.parental.litensikids             I  Worker result RETRY for Work [ id=1811a660-ee38-4b11-a1df-b4bbb2582a96, tags={ com.example.data.work.GPSUploadWorker,litensi-geofence-expedited-gps-upload } ]
+2026-09-19 11:14:05.972 19011-19011 WM-Processor            com.parental.litensikids             D  Processor 1811a660-ee38-4b11-a1df-b4bbb2582a96 executed; reschedule = true
+2026-09-19 11:14:05.973 19011-19011 WM-SystemJobService     com.parental.litensikids             D  1811a660-ee38-4b11-a1df-b4bbb2582a96 executed on JobScheduler
+2026-09-19 11:14:05.983 19011-22886 WM-GreedyScheduler      com.parental.litensikids             D  Cancelling work ID 1811a660-ee38-4b11-a1df-b4bbb2582a96
+2026-09-19 11:14:05.995 19011-19011 WM-SystemJobService     com.parental.litensikids             D  onStopJob for WorkGenerationalId(workSpecId=1811a660-ee38-4b11-a1df-b4bbb2582a96, generation=0)
+2026-09-19 11:14:06.019 19011-22886 WM-SystemJobScheduler   com.parental.litensikids             D  Scheduling work ID 1811a660-ee38-4b11-a1df-b4bbb2582a96Job ID 10
+2026-09-19 11:14:06.023 19011-19011 Quality                 com.parental.litensikids             I  Skipped: true 1 cost 13.232889 refreshRate 11143511 bit true processName com.parental.litensikids
+2026-09-19 11:14:06.058 19011-19011 Quality                 com.parental.litensikids             I  Skipped: true 2 cost 25.659243 refreshRate 11144521 bit true processName com.parental.litensikids
+2026-09-19 11:14:06.244 19011-19011 Quality                 com.parental.litensikids             I  Skipped: true 1 cost 21.879253 refreshRate 11147213 bit true processName com.parental.litensikids
+2026-09-19 11:14:06.276 19011-19011 Quality                 com.parental.litensikids             I  Skipped: true 1 cost 21.046051 refreshRate 11147352 bit true processName com.parental.litensikids
+2026-09-19 11:14:06.301 19011-19011 Quality                 com.parental.litensikids             I  Skipped: true 1 cost 12.213332 refreshRate 11147835 bit true processName com.parental.litensikids
+2026-09-19 11:14:06.362 19011-19011 Quality                 com.parental.litensikids             I  Skipped: true 2 cost 28.41042 refreshRate 11147609 bit true processName com.parental.litensikids
+2026-09-19 11:14:06.420 19011-19011 Quality                 com.parental.litensikids             I  Skipped: true 1 cost 19.47442 refreshRate 11148452 bit true processName com.parental.litensikids
+2026-09-19 11:14:06.570 19011-19011 Quality                 com.parental.litensikids             I  Skipped: true 1 cost 14.312432 refreshRate 11144827 bit true processName com.parental.litensikids
+2026-09-19 11:14:06.779 19011-19011 Quality                 com.parental.litensikids             I  Skipped: true 1 cost 11.664549 refreshRate 11143222 bit true processName com.parental.litensikids
+2026-09-19 11:14:06.962 19011-19011 Quality                 com.parental.litensikids             I  Skipped: true 2 cost 26.801228 refreshRate 11146043 bit true processName com.parental.litensikids
+2026-09-19 11:14:07.018 19011-19011 Quality                 com.parental.litensikids             I  Skipped: true 2 cost 27.566628 refreshRate 11144154 bit true processName com.parental.litensikids
+2026-09-19 11:14:07.214 19011-19011 Quality                 com.parental.litensikids             I  Skipped: true 1 cost 11.191498 refreshRate 11141780 bit true processName com.parental.litensikids
+2026-09-19 11:14:07.239 19011-19011 Quality                 com.parental.litensikids             I  Skipped: true 1 cost 14.341004 refreshRate 11141684 bit true processName com.parental.litensikids
+2026-09-19 11:14:07.269 19011-19011 Quality                 com.parental.litensikids             I  Skipped: true 1 cost 21.532164 refreshRate 11141137 bit true processName com.parental.litensikids
+2026-09-19 11:14:08.563 19011-22992 ProfileInstaller        com.parental.litensikids             D  Installing profile for com.parental.litensikids
+2026-09-19 11:14:09.272 19011-19011 OplusInput...erInternal com.parental.litensikids             D  get inputMethodManager extension: com.android.internal.view.IInputMethodManager$Stub$Proxy@b7c2c7a
+2026-09-19 11:14:10.795 19011-22571 tal.litensikids         com.parental.litensikids             I  Background concurrent copying GC freed 25MB AllocSpace bytes, 12(332KB) LOS objects, 49% free, 10MB/21MB, paused 81us,36us total 109.549ms
+2026-09-19 11:14:10.795 19011-19011 FinalizerDaemon         com.parental.litensikids             W  type=1400 audit(0.0:107942): avc: denied { getopt } for path="/dev/socket/usap_pool_primary" scontext=u:r:untrusted_app:s0:c80,c257,c512,c768 tcontext=u:r:zygote:s0 tclass=unix_stream_socket permissive=0 app=com.parental.litensikids
+2026-09-19 11:14:12.487 19011-19011 Choreographer           com.parental.litensikids             I  Skipped 35 frames!  The application may be doing too much work on its main thread.
+2026-09-19 11:14:12.487 19011-19011 Quality                 com.parental.litensikids             I  Skipped: false 35 cost 394.12976 refreshRate 11140357 bit true processName com.parental.litensikids
+2026-09-19 11:14:12.966 19011-19011 Quality                 com.parental.litensikids             I  Skipped: false 1 cost 15.375269 refreshRate 11134503 bit true processName com.parental.litensikids
+2026-09-19 11:14:13.162 19011-19011 Quality                 com.parental.litensikids             I  Skipped: false 1 cost 21.979599 refreshRate 11140061 bit true processName com.parental.litensikids
+2026-09-19 11:14:15.132 19011-19011 Quality                 com.parental.litensikids             I  Skipped: true 1 cost 19.867947 refreshRate 11141879 bit true processName com.parental.litensikids
+2026-09-19 11:14:15.608 19011-19011 Compatibil...geReporter com.parental.litensikids             D  Compat change id reported: 171228096; UID 10336; state: ENABLED
+2026-09-19 11:14:16.015 19011-22684 Quality                 com.parental.litensikids             I  JankCountInfo: com.example.MainActivity basic:0-0-0 action:0 data:0-0 type:2 stage:2-0-0 type:3 stage:1-0-0 action:1 data:0-0 type:2 stage:1-2-0 type:3 stage:1-0-0 type:7 stage:1-0-0 action:2 data:0-0 type:2 stage:11-9-0 type:3 stage:1-0-0 action:6 data:0-1 type:2 stage:0-18-0 type:3 stage:1-0-0 action:8 data:0-0 type:2 stage:3-2-0
+2026-09-19 11:14:20.451 19011-19011 ViewRootImplExtImpl     com.parental.litensikids             D  onDisplayChanged 0 for VRI android.view.ViewRootImpl@3f3fda8
+2026-09-19 11:14:24.595  1694-4826  AppSearchIcing          system_server                        E  document-validator.cc:82: Schema type config 'android$apps-db/builtin:MobileApplication-com.parental.litensikids' not found Error while validating document (android$apps-db/apps, com.parental.litensikids)
+2026-09-19 11:14:24.601  1694-4829  AppSearchAppIndxrHlp    system_server                        E  Ran into error while indexing apps: [FAILURE(6)]: Schema type config 'android$apps-db/builtin:MobileApplication-com.parental.litensikids' not found
+2026-09-19 11:14:35.960 19011-19011 WM-DelayedWorkTracker   com.parental.litensikids             D  Scheduling work 1811a660-ee38-4b11-a1df-b4bbb2582a96
+2026-09-19 11:14:35.961 19011-19011 WM-GreedyScheduler      com.parental.litensikids             D  Starting work for 1811a660-ee38-4b11-a1df-b4bbb2582a96
+2026-09-19 11:14:35.972 19011-22828 WM-Processor            com.parental.litensikids             D  Processor: processing WorkGenerationalId(workSpecId=1811a660-ee38-4b11-a1df-b4bbb2582a96, generation=0)
+2026-09-19 11:14:35.988 19011-19011 WM-WorkerWrapper        com.parental.litensikids             D  Starting work for com.example.data.work.GPSUploadWorker
+2026-09-19 11:14:36.000 19011-22876 GPSUploadWorker         com.parental.litensikids             I  GPSUploadWorker: Start flush 1 pending → id=16
+2026-09-19 11:14:36.003 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  --> POST https://parental.naeva.id/api/v1/anak/16/gps
+2026-09-19 11:14:36.003 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  Content-Type: application/x-www-form-urlencoded
+2026-09-19 11:14:36.004 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  Content-Length: 209
+2026-09-19 11:14:36.004 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  pairing_pin=616841&qr_pairing_code=LTN-VEU-7698-SEC&latitude=-6.8141883&longitude=110.8216613&captured_at=2026-09-19T04%3A13%3A51.336Z&accuracy_meters=28&battery_level=70&altitude_m=39.0&is_mock_detected=false
+2026-09-19 11:14:36.004 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  --> END POST (209-byte body)
+2026-09-19 11:14:36.206 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  <-- 200 https://parental.naeva.id/ (201ms)
+2026-09-19 11:14:36.206 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  date: Sat, 19 Sep 2026 04:14:35 GMT
+2026-09-19 11:14:36.206 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  content-type: text/html; charset=utf-8
+2026-09-19 11:14:36.206 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  server: cloudflare
+2026-09-19 11:14:36.206 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  last-modified: Sat, 19 Sep 2026 04:08:22 GMT
+2026-09-19 11:14:36.206 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  nel: {"report_to":"cf-nel","success_fraction":0.0,"max_age":604800}
+2026-09-19 11:14:36.206 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  server-timing: cfCacheStatus;desc="DYNAMIC"
+2026-09-19 11:14:36.206 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  server-timing: cfEdge;dur=6,cfOrigin;dur=15
+2026-09-19 11:14:36.206 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  x-frame-options: SAMEORIGIN
+2026-09-19 11:14:36.206 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  x-content-type-options: nosniff
+2026-09-19 11:14:36.206 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  x-xss-protection: 1; mode=block
+2026-09-19 11:14:36.206 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  report-to: {"group":"cf-nel","max_age":604800,"endpoints":[{"url":"https://a.nel.cloudflare.com/report/v4?s=amPlhiLTsCiBVW89MQWXGFBEF0hk6UWBaZ3fcToz1AmvLhKHgCPSEQvorKqO50MOdVRUHqNAv0Ypuoo68irJEXy0nWC003tP1NXyERM6i811%2FCa9SGIIdJqq%2FmN5oLW5oglIe8OpZO6h8crqQmPVDA%3D%3D"}]}
+2026-09-19 11:14:36.206 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  cf-cache-status: DYNAMIC
+2026-09-19 11:14:36.206 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  vary: accept-encoding
+2026-09-19 11:14:36.206 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  cf-ray: a3d5c3adf99e3fcc-SIN
+2026-09-19 11:14:36.206 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  alt-svc: h3=":443"; ma=86400
+2026-09-19 11:14:36.208 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  <!doctype html>
+2026-09-19 11:14:36.208 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  <html lang="id">
+2026-09-19 11:14:36.208 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I    <head>
+2026-09-19 11:14:36.208 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I      <meta charset="UTF-8" />
+2026-09-19 11:14:36.208 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I      <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+2026-09-19 11:14:36.208 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I      <title>Litensi Kids - Bimbingan Digital Anak</title>
+2026-09-19 11:14:36.208 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  
+2026-09-19 11:14:36.208 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I      <!-- Favicon (disimpan di public/ → Vite resolve otomatis ke /favicon.ico) -->
+2026-09-19 11:14:36.208 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I      <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+2026-09-19 11:14:36.208 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I      <link rel="shortcut icon" type="image/x-icon" href="/favicon.ico" />
+2026-09-19 11:14:36.208 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I      <link rel="apple-touch-icon" href="/favicon.ico" />
+2026-09-19 11:14:36.208 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I      <script type="module" crossorigin src="/assets/index-CpAaqfcB.js"></script>
+2026-09-19 11:14:36.208 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I      <link rel="stylesheet" crossorigin href="/assets/index-BL_5ccla.css">
+2026-09-19 11:14:36.208 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I    </head>
+2026-09-19 11:14:36.208 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I    <body>
+2026-09-19 11:14:36.208 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I      <div id="root"></div>
+2026-09-19 11:14:36.208 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I    <script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/v31edd6df95cf4e85bb4c19e7a9bdbcba1788362987495" integrity="sha512-iIg7k2xntmwu6/uSb5tpc/hySgZc4eoL31yB29W6tJFo2akwjPWcEqnCEdJvGexCL0KEQwVYv5BlowfhVz26hg==" data-cf-beacon='{"version":"2024.11.0","token":"c08f4ebbaa13478d93c15f065ab3fe0c","r":1,"spa":2}' crossorigin="anonymous"></script>
+2026-09-19 11:14:36.208 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  </body>
+2026-09-19 11:14:36.208 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  </html>
+2026-09-19 11:14:36.208 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  
+2026-09-19 11:14:36.208 19011-22954 okhttp.OkHttpClient     com.parental.litensikids             I  <-- END HTTP (1069-byte body)
+2026-09-19 11:14:36.212 19011-22876 GPSUploadWorker         com.parental.litensikids             W    !! Gagal upload id=1 retry=2. Retry next run: Use JsonReader.setLenient(true) to accept malformed JSON at path $
+2026-09-19 11:14:36.216 19011-22876 GPSUploadWorker         com.parental.litensikids             W  GPSUploadWorker: Ada 1 selesai, tapi ada yang gagal → Retry exponential backoff.
+2026-09-19 11:14:36.218 19011-22828 WM-WorkerWrapper        com.parental.litensikids             I  Worker result RETRY for Work [ id=1811a660-ee38-4b11-a1df-b4bbb2582a96, tags={ com.example.data.work.GPSUploadWorker,litensi-geofence-expedited-gps-upload } ]
+2026-09-19 11:14:36.221 19011-19011 WM-Processor            com.parental.litensikids             D  Processor 1811a660-ee38-4b11-a1df-b4bbb2582a96 executed; reschedule = true
+2026-09-19 11:14:36.227 19011-22883 WM-GreedyScheduler      com.parental.litensikids             D  Cancelling work ID 1811a660-ee38-4b11-a1df-b4bbb2582a96
+2026-09-19 11:14:36.235 19011-22883 WM-SystemJobScheduler   com.parental.litensikids             D  Scheduling work ID 1811a660-ee38-4b11-a1df-b4bbb2582a96Job ID 11
+2026-09-19 11:14:38.886  1694-4826  AppSearchIcing          system_server                        E  document-validator.cc:82: Schema type config 'android$apps-db/builtin:MobileApplication-com.parental.litensikids' not found Error while validating document (android$apps-db/apps, com.parental.litensikids)
+2026-09-19 11:14:38.905  1694-4829  AppSearchAppIndxrHlp    system_server                        E  Ran into error while indexing apps: [FAILURE(6)]: Schema type config 'android$apps-db/builtin:MobileApplication-com.parental.litensikids' not found
+2026-09-19 11:14:40.911 19011-19011 ViewRootImplExtImpl     com.parental.litensikids             D  onDisplayChanged 0 for VRI android.view.ViewRootImpl@3f3fda8
+2026-09-19 11:14:46.671 19011-22972 VRI[MainActivity]       com.parental.litensikids             D  dispatchAppVisibility visible:false
+2026-09-19 11:14:46.698 19011-19011 VRI[MainActivity]       com.parental.litensikids             D  setWindowStopped stopped:true
+2026-09-19 11:14:46.710 19011-22839 BufferQueueProducer     com.parental.litensikids             D  [VRI[MainActivity]#0(BLAST Consumer)0](id:4a4300000000,api:1,p:19011,c:19011) disconnect: api 1
+2026-09-19 11:14:46.714 19011-22839 BufferQueueConsumer     com.parental.litensikids             D  [VRI[MainActivity]#0(BLAST Consumer)0](id:4a4300000000,api:0,p:-1,c:19011) disconnect
+2026-09-19 11:14:46.773 19011-19011 ViewRootImplExtImpl     com.parental.litensikids             D  onDisplayChanged 0 for VRI android.view.ViewRootImpl@3f3fda8
+2026-09-19 11:14:46.934 19011-19011 VRI[MainActivity]       com.parental.litensikids             D  onFocusEvent false
+2026-09-19 11:14:53.039  5099-5455  Battery                 com.oplus.battery                    E  AppStats: Uid = 10336; pkgName = com.parental.litensikids; CpuFgTime = 0 ms; CpuBgTime = 287810 ms.
+2026-09-19 11:14:53.039  5099-5455  Battery                 com.oplus.battery                    E  AppStats: Uid = 10336; pkgName = com.parental.litensikids; CpuKernelFgTime = 0 ms; CpuKernelBgTime = 31350 ms.
+2026-09-19 11:14:53.039  5099-5455  Battery                 com.oplus.battery                    E  AppStats: Uid = 10336; pkgName = com.parental.litensikids; CpuUserFgTime = 0 ms ; CpuUserBgTime = 256460 ms.
+2026-09-19 11:14:53.040  5099-5455  Battery                 com.oplus.battery                    E  AppStats: Uid = 10336; pkgName = com.parental.litensikids; CpuFgPower = 0.0 mAh.; CpuBgPower = 6.8541783333333335 mAh.
+2026-09-19 11:14:53.040  5099-5455  Battery                 com.oplus.battery                    E  AppStats: Uid = 10336; pkgName = com.parental.litensikids; AlarmFgWakeupCount = 0; AlarmBgWakeupCount = 0
+2026-09-19 11:14:53.040  5099-5455  Battery                 com.oplus.battery                    E  AppStats: Uid = 10336; pkgName = com.parental.litensikids; JobFgCount = 0; JobBgCount = 0; JobFgTime = 0; JobBgTime = 0
+2026-09-19 11:14:53.040  5099-5455  Battery                 com.oplus.battery                    E  AppStats: Uid = 10336; pkgName = com.parental.litensikids; SyncFgCount = 0; SyncBgCount = 0; SyncFgTime = 0; SyncBgTime = 0
+2026-09-19 11:14:53.040  5099-5455  Battery                 com.oplus.battery                    E  AppStats: Uid = 10336; pkgName = com.parental.litensikids; WakeLockFgTime = 0 ms; WakeLockFgPower = 0.0 mAh.; WakeLockBgTime = 0 ms; WakeLockBgPower = 0.0 mAh.
+2026-09-19 11:14:53.040  5099-5455  Battery                 com.oplus.battery                    E  AppStats: Uid = 10336; pkgName = com.parental.litensikids; FgWifiRxBytes = 2 Bytes; BgWifiRxBytes = 244976 Bytes; FgWifiTxBytes = 1 Bytes; BgWifiTxBytes = 81244 Bytes; FgWifiRxPackets = 0 ; BgWifiRxPackets = 670 ; FgWifiTxPackets = 0 ; BgWifiTxPackets = 694 ; FgWiFiScanTimeMs = 0 ; BgWiFiScanTimeMs = 0 ; FgWiFiBatchScanTimeMs = 0 ; BgWiFiBatchScanTimeMs = 0 
+2026-09-19 11:14:53.040  5099-5455  Battery                 com.oplus.battery                    E  AppStats: Uid = 10336; pkgName = com.parental.litensikids; FgWifiRxPacketsPower = 0.0 mAh; BgWifiRxPacketsPower = 0.06435489654541016 mAh; FgWifiTxPacketsPower = 0.0 mAh; BgWifiTxPacketsPower = 0.06666014343500137 mAh; FgWifiScanPower = 0.0 mAh; BgWifiScanPower = 0.0 mAh; FgWifiBatchScanPower = 0.0 mAh; BgWifiBatchScanPower = 0.0 mAh; FgWiFiTotalPower = 0.0 mAh; BgWiFiTotalPower = 0.13101503998041153 mAh.
+2026-09-19 11:14:53.040  5099-5455  Battery                 com.oplus.battery                    E  AppStats: Uid = 10336; pkgName = com.parental.litensikids; FgGpsTime = 0 ms; BgGpsTime = 0 ms.
+2026-09-19 11:14:53.040  5099-5455  Battery                 com.oplus.battery                    E  AppStats: Uid = 10336; pkgName = com.parental.litensikids; FgGpsPower = 0.0 mAh; BgGpsPower = 0.0 mAh.
+2026-09-19 11:14:53.040  5099-5455  Battery                 com.oplus.battery                    E  AppStats: Uid = 10336; pkgName = com.parental.litensikids; FgSensorTime = 0 ms; BgSensorTime = 0 ms.
+2026-09-19 11:14:53.040  5099-5455  Battery                 com.oplus.battery                    E  AppStats: Uid = 10336; pkgName = com.parental.litensikids; FgSensorPower = 0.0 mAh; BgSensorPower = 0.0 mAh.
+2026-09-19 11:14:53.040  5099-5455  Battery                 com.oplus.battery                    E  AppStats: Uid = 10336; pkgName = com.parental.litensikids; FgCameraTime = 0 ms; BgCameraTime = 1444 ms
+2026-09-19 11:14:53.040  5099-5455  Battery                 com.oplus.battery                    E  AppStats: Uid = 10336; pkgName = com.parental.litensikids; FgCameraPower = 0.0 mAh; BgCameraPower = 0.22061111111111112 mAh
+2026-09-19 11:14:53.040  5099-5455  Battery                 com.oplus.battery                    E  AppStats: Uid = 10336; pkgName = com.parental.litensikids; FgFlashLightTime = 0 ms; BgFlashLightTime = 0 ms
+2026-09-19 11:14:53.040  5099-5455  Battery                 com.oplus.battery                    E  AppStats: Uid = 10336; pkgName = com.parental.litensikids; FgFlashLightPower = 0.0 mAh; BgFlashLightPower = 0.0 mAh
+2026-09-19 11:14:53.346  5099-5649  Battery                 com.oplus.battery                    E  AppStats: Uid = 10336; pkgName = com.parental.litensikids; CpuTime = 287810 ms; CpuTotalTime = 222115 ms
+2026-09-19 11:14:53.346  5099-5649  Battery                 com.oplus.battery                    E  AppStats: Uid = 10336; pkgName = com.parental.litensikids; CpuKernelTime = 31350 ms; CpuTotalKernelTime = 24111 ms
+2026-09-19 11:14:53.346  5099-5649  Battery                 com.oplus.battery                    E  AppStats: Uid = 10336; pkgName = com.parental.litensikids; CpuUserTime = 256460 ms; CpuTotalUserTime = 198004 ms
+2026-09-19 11:14:53.346  5099-5649  Battery                 com.oplus.battery                    E  AppStats: Uid = 10336; pkgName = com.parental.litensikids; CpuPower = 6.8541783333333335 mAh.; CpuTotalPower = 5.321148333333333 mAh.
+2026-09-19 11:14:53.346  5099-5649  Battery                 com.oplus.battery                    E  AppStats: Uid = 10336; pkgName = com.parental.litensikids; AlarmWakeupCount = 0; AlarmTotalWakeupCount = 0
+2026-09-19 11:14:53.346  5099-5649  Battery                 com.oplus.battery                    E  AppStats: Uid = 10336; pkgName = com.parental.litensikids; JobCount = 0; JobTime = 0; JobTotalCount = 0; JobTotalTime = 0
+2026-09-19 11:14:53.346  5099-5649  Battery                 com.oplus.battery                    E  AppStats: Uid = 10336; pkgName = com.parental.litensikids; SyncCount = 0; SyncTime = 0; SyncTotalCount = 0; SyncTotalTime = 0
+2026-09-19 11:14:53.346  5099-5649  Battery                 com.oplus.battery                    E  AppStats: Uid = 10336; pkgName = com.parental.litensikids; WakeLockTime = 0 ms; WakeLockPower = 0.0 mAh.; WakeLockTotalTime = 0 ms; WakeLockTotalPower = 0.0 mAh.
+2026-09-19 11:14:53.346  5099-5649  Battery                 com.oplus.battery                    E  AppStats: Uid = 10336; pkgName = com.parental.litensikids; WifiRxBytes = 244980 Bytes; WifiTxBytes = 81245 Bytes; WifiRxPackets = 670 ; WifiTxPackets = 694 ; WiFiScanTimeMs = 0 ; WiFiBatchScanTimeMs = 0 
+2026-09-19 11:14:53.346  5099-5649  Battery                 com.oplus.battery                    E  AppStats: Uid = 10336; pkgName = com.parental.litensikids; WifiRxPacketsPower = 0.19306467473506927 mAh; WifiTxPacketsPower = 0.19998042285442352 mAh; WifiScanPower = 0.0 mAh; WifiBatchScanPower = 0.0 mAh; WiFiTotalPower = 0.3930450975894928 mAh
+2026-09-19 11:14:53.346  5099-5649  Battery                 com.oplus.battery                    E  AppStats: Uid = 10336; pkgName = com.parental.litensikids; GpsTime = 0 ms; GpsTotalTime = 0 ms
+2026-09-19 11:14:53.346  5099-5649  Battery                 com.oplus.battery                    E  AppStats: Uid = 10336; pkgName = com.parental.litensikids; GpsPower = 0.0 mAh; GpsTotalPower = 0.0 mAh
+2026-09-19 11:14:53.346  5099-5649  Battery                 com.oplus.battery                    E  AppStats: Uid = 10336; pkgName = com.parental.litensikids; SensorTime = 0 ms; SensorTotalTime = 0 ms
+2026-09-19 11:14:53.346  5099-5649  Battery                 com.oplus.battery                    E  AppStats: Uid = 10336; pkgName = com.parental.litensikids; SensorPower = 0.0 mAh; SensorTotalPower = 0.0 mAh
+2026-09-19 11:14:53.346  5099-5649  Battery                 com.oplus.battery                    E  AppStats: Uid = 10336; pkgName = com.parental.litensikids; CameraTime = 1444 ms; CameraTotalTime = 0 ms
+2026-09-19 11:14:53.346  5099-5649  Battery                 com.oplus.battery                    E  AppStats: Uid = 10336; pkgName = com.parental.litensikids; CameraPower = 0.22061111111111112 mAh; CameraTotalPower = 0.0 ms
+2026-09-19 11:14:53.346  5099-5649  Battery                 com.oplus.battery                    E  AppStats: Uid = 10336; pkgName = com.parental.litensikids; FlashLightTime = 0 ms; FlashLightTotalTime = 0 ms
+2026-09-19 11:14:53.346  5099-5649  Battery                 com.oplus.battery                    E  AppStats: Uid = 10336; pkgName = com.parental.litensikids; FlashLightPower = 0.0 mAh; FlashLightTotalPower = 0.0 mAh
