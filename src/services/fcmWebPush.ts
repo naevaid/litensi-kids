@@ -79,6 +79,9 @@ export async function getFcmWebToken(swReg?: ServiceWorkerRegistration): Promise
 // -----------------------------------------------------------------------------
 // 3. Kirim token FCM ke Backend Laravel endpoint POST /profil/web-fcm-token
 //    apiClient OTOMATIS inject flat field user_id dari localStorage session (authRequired=true default)
+// CATATAN (G11 GUARD): JANGAN PERNAH kirim request jika USER BELUM LOGIN (guest landing/login page).
+//   Server akan return 401 Unauthorized wajar, tapi ini membanjiri console user dengan error merah
+//   padahal bukan bug. Supress dengan early return.
 // -----------------------------------------------------------------------------
 export async function sendFcmTokenToBackend(token: string): Promise<{
   ok: boolean;
@@ -88,6 +91,17 @@ export async function sendFcmTokenToBackend(token: string): Promise<{
   if (!token || token.trim() === '') {
     return { ok: false, message: 'Token FCM kosong' };
   }
+  // (G11 GUARD) JIKA USER BELUM LOGIN = SKIP KIRIM. TIDAK PERLU ERROR CONSOLE.
+  //   User akan auto register token setelah login success via LoginPage useEffect / Dashboard mount.
+  try {
+    // import api DAN getSessionUser JANGAN circular, api sudah punya isLoggedIn via session internal
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const sess = (api as any).getSessionUser ? (api as any).getSessionUser() : null;
+    if (!sess || !sess.id) {
+      console.debug('[FCM] sendFcmTokenToBackend: SKIP (user belum login / session invalid — register token otomatis setelah login berhasil)');
+      return { ok: false, message: 'User belum login — token register ditunda setelah login sukses' };
+    }
+  } catch (_) { /* ignore check sess guard */ }
   try {
     const res = await api.post<any>(
       '/profil/web-fcm-token',
@@ -100,7 +114,13 @@ export async function sendFcmTokenToBackend(token: string): Promise<{
       data: res.data,
     };
   } catch (e: any) {
-    console.error('[FCM] POST /profil/web-fcm-token exception:', e);
+    // (G11 SUPPRESS) 401 = session expired / belum login = BUKAN BUG. Hanya debug log.
+    const status = Number(e?.status ?? e?.response?.status ?? 0);
+    if (status === 401) {
+      console.debug('[FCM] POST /profil/web-fcm-token → 401 (session user invalid — akan register ulang setelah login berhasil):', e?.message ?? '');
+    } else {
+      console.error('[FCM] POST /profil/web-fcm-token exception:', e);
+    }
     return { ok: false, message: e?.message || 'Network error saat kirim token FCM' };
   }
 }

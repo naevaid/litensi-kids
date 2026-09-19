@@ -122,16 +122,32 @@ function FcmWebIntegrationHooks() {
       if (perm === 'granted') {
         // Permission sudah diizinkan → AUTO refresh token FCM setiap mount
         // (FCM token bisa expired tiap 6 bulan, refresh ketika user buka halaman = aman)
-        try {
-          const swReg = swRegistrationRef.current ?? undefined;
-          const result = await requestPermissionAndRegisterToken(swReg);
-          if (result.ok) {
-            console.log('[FCM App] Auto refresh token FCM BERHASIL. Panjang token =', (result.token || '').length);
-          } else {
-            console.warn('[FCM App] Auto refresh token FCM GAGAL:', result.message);
+        // (G11 GUARD) HANYA AUTO REFRESH JIKA USER SUDAH LOGIN (session user id valid).
+        //   JIKA BELUM LOGIN (landing/login guest page): TIDAK PERLU KIRIM TOKEN ke server,
+        //   lakukan register token SETELAH user login sukses via LoginPage redirect ke dashboard.
+        //   Ini MENGHINDARI 401 Unauthorized merah flooding console user.
+        let sessLogin = null as SessionUser | null;
+        try { sessLogin = getSessionUser(); } catch (_) { sessLogin = null; }
+        if (!sessLogin || !sessLogin.id) {
+          console.debug('[FCM App] Auto refresh token FCM DITUNDA (user BELUM LOGIN). Register otomatis SETELAH login berhasil.');
+        } else {
+          try {
+            const swReg = swRegistrationRef.current ?? undefined;
+            const result = await requestPermissionAndRegisterToken(swReg);
+            if (result.ok) {
+              console.log('[FCM App] Auto refresh token FCM BERHASIL. Panjang token =', (result.token || '').length);
+            } else {
+              // (G11 SUPPRESS) BUKAN error fatal. Hanya warn preview, tidak stack trace.
+              const isNotLoggedInMsg = (result.message || '').toLowerCase().includes('belum login') || (result.message || '').toLowerCase().includes('401');
+              if (isNotLoggedInMsg) {
+                console.debug('[FCM App] Auto refresh token FCM ditunda (session invalid):', result.message);
+              } else {
+                console.warn('[FCM App] Auto refresh token FCM PERINGATAN:', result.message);
+              }
+            }
+          } catch (e: any) {
+            console.warn('[FCM App] Auto refresh token FCM exception:', e);
           }
-        } catch (e: any) {
-          console.warn('[FCM App] Auto refresh token FCM exception:', e);
         }
       } else if (perm === 'default') {
         // User belum pilih allow/deny → tampilkan BANNER INLINE (JANGAN native popup paksa!)
