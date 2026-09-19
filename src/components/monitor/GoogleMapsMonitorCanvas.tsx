@@ -32,9 +32,7 @@ interface GoogleMapsMonitorCanvasProps {
   activeChild: ChildDeviceMonitor;
   onSelectChild: (childId: string) => void;
   showToast: (msg: string, type?: 'success' | 'info' | 'error' | 'warning') => void;
-  onSimulateMove: () => void;
-  isSimulatingMove: boolean;
-  // (G5.3) Props BARU Live GPS update polling real 30 detik high frequency 5s
+  // (G5.3) Props Live GPS update polling real 30 detik high frequency 5s
   onForceLiveUpdate: () => void;
   forceLiveActive: boolean;
   childrenOverlay?: React.ReactNode;
@@ -102,8 +100,6 @@ export const GoogleMapsMonitorCanvas: React.FC<GoogleMapsMonitorCanvasProps> = (
   activeChild,
   onSelectChild,
   showToast,
-  onSimulateMove,
-  isSimulatingMove,
   onForceLiveUpdate,
   forceLiveActive,
   childrenOverlay
@@ -305,7 +301,7 @@ export const GoogleMapsMonitorCanvas: React.FC<GoogleMapsMonitorCanvasProps> = (
 
         <div className="h-4 w-px bg-slate-700 mx-0.5" />
 
-        {/* (G5.3 BARU) Force Live GPS Update High Frequency 5s polling 30 detik */}
+        {/* (G5.3) Force Live GPS Update High Frequency 5s polling 30 detik */}
         <button
           type="button"
           onClick={onForceLiveUpdate}
@@ -322,20 +318,6 @@ export const GoogleMapsMonitorCanvas: React.FC<GoogleMapsMonitorCanvasProps> = (
           <span className={`${forceLiveActive ? 'font-bold' : ''}`}>
             {forceLiveActive ? '● LIVE 5s (30d)' : '🚀 Live GPS 30d'}
           </span>
-        </button>
-
-        <div className="h-4 w-px bg-slate-700 mx-0.5" />
-
-        {/* Simulate GPS Movement (DEBUG MODE SAJA — bukan GPS real!) */}
-        <button
-          type="button"
-          onClick={onSimulateMove}
-          disabled={isSimulatingMove}
-          className="px-2.5 py-1 text-xs font-medium text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded-lg transition-colors flex items-center gap-1 cursor-pointer disabled:opacity-50"
-          title="[DEBUG SIMULASI SAJA] Pindahkan posisi marker secara RANDOM secara lokal di browser. BUKAN data GPS dari HP anak."
-        >
-          <RefreshCw className={`w-3 h-3 ${isSimulatingMove ? 'animate-spin' : ''}`} />
-          <span>Simulasi</span>
         </button>
       </div>
 

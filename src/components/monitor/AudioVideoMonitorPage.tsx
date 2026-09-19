@@ -160,7 +160,6 @@ export const AudioVideoMonitorPage: React.FC<AudioVideoMonitorPageProps> = ({ sh
   const [childrenList, setChildrenList] = useState<ChildDeviceMonitor[]>([]);
   const [showFloatingWidget, setShowFloatingWidget] = useState<boolean>(true);
   const [capturedSnaps, setCapturedSnaps] = useState<string[]>([]);
-  const [isSimulatingMove, setIsSimulatingMove] = useState<boolean>(false);
   const mapContainerRef = useRef<HTMLDivElement>(null);
 
   // ================ PRIORITAS 1: KUOTA AV MONITOR (LISTEN + CAMERA GABUNG 1 KUOTA) ================
@@ -439,30 +438,6 @@ export const AudioVideoMonitorPage: React.FC<AudioVideoMonitorPageProps> = ({ sh
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // Live GPS Simulation (button lama tetap ada: "Simulasikan Pergerakan")
-  const handleSimulateMove = () => {
-    setIsSimulatingMove(true);
-    setTimeout(() => {
-      setChildrenList(prev =>
-        prev.map(c => {
-          if (c.id === selectedChildId) {
-            const deltaLat = (Math.random() - 0.5) * 0.0006;
-            const deltaLng = (Math.random() - 0.5) * 0.0006;
-            return {
-              ...c,
-              latitude: Number((c.latitude + deltaLat).toFixed(6)),
-              longitude: Number((c.longitude + deltaLng).toFixed(6)),
-              lastUpdated: 'Baru saja'
-            };
-          }
-          return c;
-        })
-      );
-      setIsSimulatingMove(false);
-      showToast(`Posisi GPS Google Maps untuk ${activeChild.name} diperbarui`, 'success');
-    }, 450);
-  };
 
   // Click outside to close child dropdown
   useEffect(() => {
@@ -757,9 +732,7 @@ export const AudioVideoMonitorPage: React.FC<AudioVideoMonitorPageProps> = ({ sh
               setIsVideoStreaming(false);
             }}
             showToast={showToast}
-            onSimulateMove={handleSimulateMove}
-            isSimulatingMove={isSimulatingMove}
-            // (G5.3 BARU) Pass force live update high frequency 5s polling 30 detik
+            // (G5.3) Pass force live update high frequency 5s polling 30 detik
             onForceLiveUpdate={handleForceLiveUpdate}
             forceLiveActive={!!(forceLiveUntilMs && Date.now() < forceLiveUntilMs)}
             childrenOverlay={
