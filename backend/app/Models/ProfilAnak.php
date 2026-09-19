@@ -34,6 +34,10 @@ class ProfilAnak extends Model
         'av_minutes_daily_override',
         'fcm_token',
         'notes',
+        // G1.3 - Last known GPS (snapshot terakhir untuk Monitor initial center, TIDAK hardcode Jakarta!)
+        'last_known_latitude',
+        'last_known_longitude',
+        'last_gps_captured_at',
     ];
 
     // Cast tipe data untuk kolom tertentu
@@ -45,6 +49,10 @@ class ProfilAnak extends Model
             'paired_at' => 'datetime',
             'last_active' => 'datetime',
             'av_minutes_daily_override' => 'integer',
+            // G1.3 cast untuk GPS last known
+            'last_known_latitude' => 'decimal:7',
+            'last_known_longitude' => 'decimal:7',
+            'last_gps_captured_at' => 'datetime',
         ];
     }
 

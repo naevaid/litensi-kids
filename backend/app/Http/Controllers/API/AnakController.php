@@ -3,10 +3,16 @@
 namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\Controller;
+use App\Models\LogGeofence;
+use App\Models\PergerakanGpsAnak;
 use App\Models\ProfilAnak;
+use App\Models\ZonaGeofence;
+use App\Services\FcmPushService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 class AnakController extends Controller
@@ -535,6 +541,262 @@ class AnakController extends Controller
                 'updated_at' => now()->toISOString(),
             ],
         ]);
+    }
+
+    // AN9/G2.2 - Upload GPS pergerakan realtime dari Companion Android FusedLocationProviderClient.
+    // GATE OWNERSHIP wajib pairing_pin ATAU qr_pairing_code yang cocok dengan row ProfilAnak target ID.
+    // Data disimpan ke (1) tabel pergerakan_gps_anak (history lengkap) + (2) update snapshot
+    // last_known GPS di profil_anak (untuk Monitor page initial center, TIDAK hardcode Jakarta!).
+    // G2.3: Setelah insert/update berhasil, evaluasi semua ZonaGeofence milik user via formula
+    // Haversine 6371 KM → trigger enter/exit geofence → insert log_geofence + broadcast
+    // FCM push ke orang tua (Web + Android) via FcmPushService::broadcastUserChildren().
+    public function uploadGpsPergerakan(Request $request, int $id): JsonResponse
+    {
+        $anak = ProfilAnak::findOrFail($id);
+
+        $validated = $request->validate([
+            // Gate kepemilikan perangkat: salah satu field WAJIB dikirim & cocok
+            'qr_pairing_code' => 'sometimes|string|max:50',
+            'pairing_pin' => 'sometimes|string|max:10',
+            // GPS core fields (wajib dari device FusedLocationProviderClient)
+            'latitude' => 'required|numeric|between:-90,90',
+            'longitude' => 'required|numeric|between:-180,180',
+            'captured_at' => 'required|date',
+            // Metadata GPS opsional
+            'accuracy_meters' => 'nullable|integer|min:0',
+            'battery_level' => 'nullable|integer|between:0,100',
+            'speed_kmh' => 'nullable|numeric|min:0',
+            'altitude_m' => 'nullable|numeric',
+            'is_mock_detected' => 'nullable|boolean',
+        ]);
+
+        // Gate kepemilikan: jika salah satu dikirim, WAJIB cocok dengan row
+        if (!empty($validated['qr_pairing_code']) && $validated['qr_pairing_code'] !== $anak->qr_pairing_code) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validasi kepemilikan gagal: qr_pairing_code tidak cocok dengan perangkat ini.',
+            ], 403);
+        }
+        if (!empty($validated['pairing_pin']) && $validated['pairing_pin'] !== $anak->pairing_pin) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validasi kepemilikan gagal: pairing_pin tidak cocok dengan perangkat ini.',
+            ], 403);
+        }
+        // Minimal salah satu dari qr_pairing_code ATAU pairing_pin HARUS dikirim (tidak boleh kosong dua-duanya)
+        if (empty($validated['qr_pairing_code']) && empty($validated['pairing_pin'])) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validasi kepemilikan gagal: wajib kirim pairing_pin ATAU qr_pairing_code.',
+            ], 403);
+        }
+
+        // Normalisasi tipe data input agar tidak string saat perhitungan / insert DB
+        $newLat = (float) $validated['latitude'];
+        $newLng = (float) $validated['longitude'];
+        $capturedAt = Carbon::parse($validated['captured_at']);
+        $accuracyMeters = isset($validated['accuracy_meters']) ? (int) $validated['accuracy_meters'] : null;
+        $batteryLevel = isset($validated['battery_level']) ? (int) $validated['battery_level'] : null;
+
+        // Ambil LAST KNOWN SEBELUM di-overwrite (untuk menghitung jarak dari titik sebelumnya)
+        $prevLat = $anak->last_known_latitude;
+        $prevLng = $anak->last_known_longitude;
+
+        // (G2.2 STEP 1) Insert row history pergerakan GPS ke tabel pergerakan_gps_anak via Mass Assignment
+        $pergerakan = PergerakanGpsAnak::create(array_merge(
+            $validated,
+            [
+                'profil_anak_id' => $anak->id,
+                'latitude' => $newLat,
+                'longitude' => $newLng,
+                'captured_at' => $capturedAt,
+            ]
+        ));
+
+        // (G2.2 STEP 2) Update snapshot last_known GPS di ProfilAnak.
+        // PENTING: last_gps_captured_at diisi DARI VALUE CAPTURED AT HP (bukan now() server!)
+        //          agar waktu snapshot sesuai dengan waktu penangkapan sinyal GPS di perangkat.
+        //          last_active = now() server waktu untuk status "terakhir kali terhubung".
+        $anak->update([
+            'last_known_latitude' => $newLat,
+            'last_known_longitude' => $newLng,
+            'last_gps_captured_at' => $capturedAt,
+            'last_active' => now(),
+        ]);
+
+        // (G2.2 STEP 3) Hitung jarak dari titik GPS sebelumnya ke titik baru via Haversine (dalam meter)
+        $distanceMeters = 0;
+        if ($prevLat !== null && $prevLng !== null) {
+            $jarakPrevKm = self::haversineKm((float) $prevLat, (float) $prevLng, $newLat, $newLng);
+            $distanceMeters = (int) round($jarakPrevKm * 1000);
+        }
+
+        // (G2.3) Evaluasi Geofence + Trigger FCM Broadcast (DIBUNGKUS try/catch non fatal)
+        // Jika FcmPushService tidak ready / DB geofence corrupt → GPS upload TETAP 200 sukses,
+        // hanya geofence yang gagal silently di-log (warning level).
+        $geofenceTriggeredCount = 0;
+        $insideAnyZone = false;
+        try {
+            $zonasAktif = ZonaGeofence::where('user_id', $anak->user_id)
+                ->where('status', 'active')
+                ->get();
+
+            foreach ($zonasAktif as $zona) {
+                // (G2.3a) Filter assigned_children: jika zona punya assign list & anak ini
+                // tidak ada di list → skip zona ini (hanya berlaku untuk anak yang di-assign).
+                // HOTFIX: DB JSON kadang menyimpan id sebagai STRING (contoh ["1"]) padahal
+                //         $anak->id adalah INTEGER → cast kedua sisi ke STRING agar compare
+                //         tidak false negative karena type mismatch strict in_array.
+                $assigned = $zona->assigned_children;
+                if ($assigned !== null && is_array($assigned)) {
+                    $anakIdStr = (string) $anak->id;
+                    $assignedStrs = array_map('strval', $assigned);
+                    if (!in_array($anakIdStr, $assignedStrs, true)) {
+                        continue;
+                    }
+                }
+
+                // (G2.3b) Hitung jarak titik GPS baru vs center zona (kilometer float)
+                $jarakZonaKm = self::haversineKm(
+                    $newLat,
+                    $newLng,
+                    (float) $zona->latitude,
+                    (float) $zona->longitude
+                );
+                $radiusKm = ((int) $zona->radius_meters) / 1000.0;
+
+                // (G2.3c) Ambil STATUS TERAKHIR dari tabel log_geofence untuk zona + anak ini.
+                // CATATAN PRE-AUDIT G0: tabel log_geofence TIDAK ADA profil_anak_id FK,
+                // maka query via child_name STRING (sesuai shape existing model fillable).
+                $lastLog = LogGeofence::where('zona_geofence_id', $zona->id)
+                    ->where('child_name', $anak->name)
+                    ->latest('timestamp')
+                    ->first();
+                $lastEventType = $lastLog?->event_type ?? null;
+
+                $isInside = ($jarakZonaKm < $radiusKm);
+                if ($isInside) {
+                    $insideAnyZone = true;
+                }
+
+                // (G2.3d) EVENT MASUK ZONA: jarak di dalam radius, sebelumnya TIDAK di dalam,
+                // dan zona punya notify_on_enter = TRUE → insert log + broadcast FCM.
+                if ($isInside && $lastEventType !== 'enter' && $zona->notify_on_enter === true) {
+                    LogGeofence::create([
+                        'zona_geofence_id' => $zona->id,
+                        'child_name' => $anak->name,
+                        'device_name' => $anak->device_name ?? 'Unknown Device',
+                        'zone_name' => $zona->name,
+                        'zone_type' => $zona->category,
+                        'event_type' => 'enter',
+                        'timestamp' => $capturedAt,
+                        'location_coordinates' => "{$newLat},{$newLng}",
+                        'battery_status' => $batteryLevel !== null ? "{$batteryLevel}%" : null,
+                        'accuracy' => $accuracyMeters !== null ? "{$accuracyMeters}m" : null,
+                    ]);
+                    // Update last_triggered zona (catatan audit kapan terakhir kali zona ini menembakkan event)
+                    $zona->last_triggered = now();
+                    $zona->save();
+
+                    // Broadcast FCM push ke semua perangkat orang tua (Web Push + Android Parent)
+                    $wibStr = $capturedAt->timezone('Asia/Jakarta')->format('d/m/Y H:i');
+                    $payload = [
+                        'title' => "Anak Masuk Zona {$zona->category}: {$zona->name}",
+                        'body' => "{$anak->name} terdeteksi MASUK area {$zona->name} (radius {$zona->radius_meters}m) pada {$wibStr} WIB.",
+                        'data' => [
+                            'zona_id' => (string) $zona->id,
+                            'event_type' => 'geofence_enter',
+                            'click_url' => '/monitor',
+                        ],
+                    ];
+                    try {
+                        app(FcmPushService::class)->broadcastUserChildren(
+                            $anak->user_id,
+                            'geofence_enter',
+                            $payload
+                        );
+                    } catch (\Throwable $e) {
+                        Log::warning("[GEO-ENTER] broadcastUserChildren gagal user={$anak->user_id}: " . $e->getMessage());
+                    }
+                    $geofenceTriggeredCount++;
+                }
+                // (G2.3e) EVENT KELUAR ZONA: jarak LUAR radius, sebelumnya MASUK (enter),
+                // dan zona punya notify_on_exit = TRUE → insert log exit + broadcast FCM.
+                elseif (!$isInside && $lastEventType === 'enter' && $zona->notify_on_exit === true) {
+                    LogGeofence::create([
+                        'zona_geofence_id' => $zona->id,
+                        'child_name' => $anak->name,
+                        'device_name' => $anak->device_name ?? 'Unknown Device',
+                        'zone_name' => $zona->name,
+                        'zone_type' => $zona->category,
+                        'event_type' => 'exit',
+                        'timestamp' => $capturedAt,
+                        'location_coordinates' => "{$newLat},{$newLng}",
+                        'battery_status' => $batteryLevel !== null ? "{$batteryLevel}%" : null,
+                        'accuracy' => $accuracyMeters !== null ? "{$accuracyMeters}m" : null,
+                    ]);
+                    $zona->last_triggered = now();
+                    $zona->save();
+
+                    $wibStr = $capturedAt->timezone('Asia/Jakarta')->format('d/m/Y H:i');
+                    $payload = [
+                        'title' => "Anak Keluar Zona {$zona->category}: {$zona->name}",
+                        'body' => "{$anak->name} terdeteksi KELUAR area {$zona->name} (radius {$zona->radius_meters}m) pada {$wibStr} WIB.",
+                        'data' => [
+                            'zona_id' => (string) $zona->id,
+                            'event_type' => 'geofence_exit',
+                            'click_url' => '/monitor',
+                        ],
+                    ];
+                    try {
+                        app(FcmPushService::class)->broadcastUserChildren(
+                            $anak->user_id,
+                            'geofence_exit',
+                            $payload
+                        );
+                    } catch (\Throwable $e) {
+                        Log::warning("[GEO-EXIT] broadcastUserChildren gagal user={$anak->user_id}: " . $e->getMessage());
+                    }
+                    $geofenceTriggeredCount++;
+                }
+            }
+        } catch (\Throwable $e) {
+            // Geofence evaluasi FAIL non fatal → GPS upload TETAP sukses 200, hanya log warning.
+            Log::warning("[G2.3] Evaluasi geofence gagal (non fatal), GPS anak_id={$anak->id} tetap tersimpan: " . $e->getMessage());
+        }
+
+        // (FINAL) Response standard shape: success + data ringkasan upload.
+        // event_type geofence_enter/geofence_exit EXACT match handler client side
+        // (F5 Android LitensiFirebaseMessagingService.onMessageReceived & F4 Web SW push listener).
+        return response()->json([
+            'success' => true,
+            'message' => 'Data GPS pergerakan anak berhasil disimpan & trigger geofence di-evaluasi.',
+            'data' => [
+                'gps_id' => $pergerakan->id,
+                'captured_at' => $capturedAt->toIso8601String(),
+                'distance_from_last_known_meters' => $distanceMeters,
+                'geofence_events_triggered_count' => $geofenceTriggeredCount,
+                'is_inside_any_active_zone' => $insideAnyZone,
+                'updated_at' => now()->toIso8601String(),
+            ],
+        ]);
+    }
+
+    // Helper Haversine Great Circle Distance (rumus 6371 KM radius bumi)
+    // Parameter: latitude & longitude dalam decimal degrees (WGS84).
+    // Return: jarak 2 titik dalam KILOMETER float.
+    // Digunakan di (a) distance previous GPS → dikali 1000 jadi meter untuk response.
+    //            (b) perbandingan jarak titik GPS vs center ZonaGeofence (Km vs radius_meters/1000).
+    private static function haversineKm(float $lat1, float $lng1, float $lat2, float $lng2): float
+    {
+        $pi180 = M_PI / 180;
+        $dLat = ($lat2 - $lat1) * $pi180;
+        $dLng = ($lng2 - $lng1) * $pi180;
+        $lat1Rad = $lat1 * $pi180;
+        $lat2Rad = $lat2 * $pi180;
+        $a = sin($dLat / 2) ** 2 + cos($lat1Rad) * cos($lat2Rad) * sin($dLng / 2) ** 2;
+        $c = 2 * asin(sqrt($a));
+        return 6371.0 * $c;
     }
 
     // Hapus profil anak

@@ -21,6 +21,16 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.MyApplication">
+        <!-- F5.2: Firebase Cloud Messaging Service — menerima push notifikasi & refresh token -->
+        <!-- Pakai FQN (Full Qualified Name) com.example.* karena manifest namespace = com.parental.litensikids
+             tapi actual source code berada di package com.example (sesuai MainActivity L25). -->
+        <service
+            android:name="com.example.service.LitensiFirebaseMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
         <activity
             android:name="com.example.MainActivity"
             android:exported="true"

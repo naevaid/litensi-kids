@@ -1,9 +1,14 @@
 package com.example
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
@@ -26,8 +31,37 @@ import com.example.ui.viewmodel.LitensiViewModel
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
+
+    companion object {
+        // Request code untuk runtime permission POST_NOTIFICATIONS (Android 13+ API 33).
+        // Tidak perlu handle callback hasil — jika user deny, notifikasi TIDAK muncul
+        // (graceful degradation, tidak crash app).
+        private const val RC_POST_NOTIF_PERM = 1001
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // ============================================================================
+        // (F5.2 lanjutan) Runtime Request Permission POST_NOTIFICATIONS untuk Android 13+
+        // ----------------------------------------------------------------------------
+        // Android 13 (Tiramisu, API 33) memerlukan PERMISSION REQUEST SECARA EKSPLISIT
+        //   untuk MENAMPILKAN NOTIFIKASI ke user (manifest <uses-permission> saja TIDAK
+        //   CUKUP untuk Android 13+). Jika user deny = notifikasi tidak tampil (graceful).
+        // ============================================================================
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val granted = ContextCompat.checkSelfPermission(
+                this, Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED
+            if (!granted) {
+                ActivityCompat.requestPermissions(
+                    this,
+                    arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+                    RC_POST_NOTIF_PERM
+                )
+            }
+        }
+
         enableEdgeToEdge()
         setContent {
             LitensiKidsTheme {

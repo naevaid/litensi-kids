@@ -46,15 +46,6 @@ android {
     sourceCompatibility = JavaVersion.VERSION_11
     targetCompatibility = JavaVersion.VERSION_11
   }
-  // (Warning Cleanup 1) Fix 61 warning @Json annotation target ambigu Kotlin 2.0+.
-  // Opt-in future behavior: annotation di constructor param apply BOTH ke param + property (sesuai expect Moshi codegen).
-  // Kotlin 2.0+ unified DSL via extension kotlin { compilerOptions { } (bukan kotlinOptions lama).
-  kotlin {
-    compilerOptions {
-      freeCompilerArgs.add("-Xannotation-default-target=param-property")
-      jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11)
-    }
-  }
   buildFeatures {
     compose = true
     buildConfig = true
@@ -63,6 +54,14 @@ android {
   dependenciesInfo {
     includeInApk = false
     includeInBundle = true
+  }
+}
+
+// (Warning Cleanup) Fix deprecated compilerOptions & Moshi @Json warning in Kotlin 2.0+
+tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+  compilerOptions {
+    jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11)
+    freeCompilerArgs.add("-Xannotation-default-target=param-property")
   }
 }
 

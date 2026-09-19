@@ -8,7 +8,9 @@ import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
+import androidx.camera.core.ExperimentalGetImage
 import androidx.camera.core.ImageAnalysis
+import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
@@ -248,6 +250,7 @@ fun QrScannerFrame(
                                 .build()
                                 .also { analysis ->
                                     analysis.setAnalyzer(cameraAnalysisExecutor) { imageProxy ->
+                                        @androidx.annotation.OptIn(androidx.camera.core.ExperimentalGetImage::class)
                                         val mediaImage = imageProxy.image
                                         if (mediaImage == null) {
                                             imageProxy.close()

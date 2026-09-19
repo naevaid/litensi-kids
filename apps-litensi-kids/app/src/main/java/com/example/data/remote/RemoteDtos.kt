@@ -144,3 +144,13 @@ data class ChatSendResponseDto(
     @Json(name = "saved_to_db") val savedToDb: Boolean,
     @Json(name = "thread_unread_orangtua_count") val threadUnreadOrangtuaCount: Int
 )
+
+// ============================================================
+// DTO FCM Token (F3 POST /anak/{id}/fcm-token) — endpoint Android F5
+// ============================================================
+@JsonClass(generateAdapter = true)
+data class FcmTokenResponseDto(
+    @Json(name = "fcm_token_length") val fcmTokenLength: Int,
+    @Json(name = "token_revoked") val tokenRevoked: Boolean,
+    @Json(name = "updated_at") val updatedAt: String?
+)

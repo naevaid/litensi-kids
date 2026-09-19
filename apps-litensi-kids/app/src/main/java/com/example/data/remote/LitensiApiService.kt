@@ -73,4 +73,15 @@ interface LitensiApiService {
         @Field("text") text: String,
         @Field("attachments[]") attachments: List<String>? = null
     ): ApiResponse<ChatSendResponseDto>
+
+    // F3 — Update/Register FCM token perangkat Android (dipanggil oleh onNewToken & ViewModel force get).
+    // Gate kepemilikan: SAMA PERSIS dengan AN8 uploadTelemetry. Minimal salah satu pairing_pin/qr_pairing_code NON EMPTY.
+    @FormUrlEncoded
+    @POST("api/v1/anak/{id}/fcm-token")
+    suspend fun updateFcmTokenAnak(
+        @Path("id") id: Int,
+        @Field("pairing_pin") pairingPin: String? = null,
+        @Field("qr_pairing_code") qrPairingCode: String? = null,
+        @Field("fcm_token") fcmToken: String? = null
+    ): ApiResponse<FcmTokenResponseDto>
 }

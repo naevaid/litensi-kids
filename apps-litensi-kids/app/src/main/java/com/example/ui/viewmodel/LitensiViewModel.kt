@@ -8,6 +8,7 @@ import android.content.pm.PackageManager
 import android.os.BatteryManager
 import android.os.Build
 import android.provider.Settings
+import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -19,6 +20,8 @@ import com.example.data.model.SosLogEntity
 import com.example.data.model.TaskEntity
 import com.example.data.repository.LitensiRepository
 import com.example.data.work.LitensiTelemetryWorker
+import com.google.firebase.Firebase
+import com.google.firebase.messaging.messaging
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -179,6 +182,64 @@ class LitensiViewModel(application: Application) : AndroidViewModel(application)
                     }
                     // Refresh status permission actual dari Android system
                     refreshPermissionsState(application)
+
+                    // ==========================================================================
+                    // (F5.3) FORCE GET & UPLOAD FCM TOKEN SEKALI SETELAH PAIRING TERSAMBUNG
+                    // --------------------------------------------------------------------------
+                    // ALASAN: onNewToken() Firebase service TIDAK AKAN DIPANGGIL untuk token
+                    //   yang SUDAH ADA di cache Firebase lokal (kasus: app sudah terinstall
+                    //   sebelum service di-upgrade, atau user baru selesai pairing pertama kali
+                    //   tapi token cache sudah ada sejak install awal). Force get disini memastikan
+                    //   token langsung ter-upload ke backend TANPA menunggu onNewToken berikutnya.
+                    // Cover BOTH KASUS: (a) Re-open app setelah restar (sudah paired dari sebelumnya)
+                    //                   (b) Fresh pairing flow BARU (setelah Room save state, collect
+                    //                       akan ter-trigger lagi dengan state baru isConnected=true).
+                    // ==========================================================================
+                    val pin = state.pinPairing
+                    val qr = state.qrPairingCode
+                    if (anakId != null && (!pin.isNullOrBlank() || !qr.isNullOrBlank())) {
+                        Firebase.messaging.token.addOnSuccessListener { freshToken ->
+                            if (freshToken.isNotBlank()) {
+                                viewModelScope.launch {
+                                    runCatching {
+                                        repository.updateFcmTokenAnak(
+                                            token = freshToken,
+                                            id = anakId,
+                                            pairingPin = pin,
+                                            qrPairingCode = qr
+                                        )
+                                    }.onSuccess { result ->
+                                        Log.d(
+                                            "LitensiViewModel-FCM",
+                                            "Force upload FCM token BERHASIL (after pairing): " +
+                                            "tokenLen=${result.fcmTokenLength}, " +
+                                            "updatedAt=${result.updatedAt}"
+                                        )
+                                    }.onFailure { err ->
+                                        Log.w(
+                                            "LitensiViewModel-FCM",
+                                            "Force upload FCM token GAGAL (non-fatal, retry via onNewToken nanti): ${err.message}",
+                                            err
+                                        )
+                                    }
+                                }
+                            } else {
+                                Log.w("LitensiViewModel-FCM", "Force get FCM token: token kosong dari Firebase — skip upload.")
+                            }
+                        }.addOnFailureListener { err ->
+                            Log.w(
+                                "LitensiViewModel-FCM",
+                                "Firebase.messaging.token gagal diambil (non-fatal): ${err.message}",
+                                err
+                            )
+                        }
+                    } else {
+                        Log.w(
+                            "LitensiViewModel-FCM",
+                            "Gate kepemilikan FCM force upload: anakId=$anakId, " +
+                            "pinLen=${pin?.length ?: 0}, qrLen=${qr?.length ?: 0} — skip upload."
+                        )
+                    }
                 }
             }
         }

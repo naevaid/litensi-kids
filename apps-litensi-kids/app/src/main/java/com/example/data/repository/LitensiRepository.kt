@@ -10,6 +10,7 @@ import com.example.data.model.TaskEntity
 import com.example.data.remote.ApiResponse
 import com.example.data.remote.ChatListResponseDto
 import com.example.data.remote.ChatSendResponseDto
+import com.example.data.remote.FcmTokenResponseDto
 import com.example.data.remote.LitensiApiClient
 import com.example.data.remote.LitensiApiService
 import com.example.data.remote.ProfilAnakDto
@@ -333,6 +334,35 @@ class LitensiRepository(
             )
         }
         if (!resp.success) error(resp.message ?: "Gagal upload telemetry.")
+        return resp.data
+    }
+
+    // =========================================================================
+    // MODUL FCM (F3) — Upload/Update FCM token perangkat Android ke backend
+    // =========================================================================
+    // Dipanggil oleh: (1) LitensiFirebaseMessagingService.onNewToken saat token berubah;
+    //                 (2) ViewModel force getToken setelah pairing sukses (onboarding cache).
+    // Gate kepemilikan: pairingPin ATAU qrPairingCode WAJIB salah satu NON EMPTY.
+    suspend fun updateFcmTokenAnak(
+        token: String?,
+        id: Int,
+        pairingPin: String?,
+        qrPairingCode: String?
+    ): FcmTokenResponseDto {
+        require(!pairingPin.isNullOrBlank() || !qrPairingCode.isNullOrBlank()) {
+            "Gate kepemilikan: pairingPin atau qrPairingCode wajib disertakan (minimal salah satu)."
+        }
+        // Token boleh NULL = case revoke token saat unpair (tidak ada flow unpair saat ini tapi support OK).
+        val tokenClean = token?.takeIf { it.isNotBlank() }
+        val resp = apiCall {
+            apiService.updateFcmTokenAnak(
+                id = id,
+                pairingPin = pairingPin,
+                qrPairingCode = qrPairingCode,
+                fcmToken = tokenClean
+            )
+        }
+        if (!resp.success) error(resp.message ?: "Gagal update FCM token perangkat anak.")
         return resp.data
     }
 }

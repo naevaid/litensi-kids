@@ -148,6 +148,11 @@ Route::prefix('v1')->group(function () {
         // GATE OWNERSHIP: Endpoint di AnakController mewajibkan pairing_pin ATAU qr_pairing_code cocok → 403 jika salah.
         Route::post('/{id}/fcm-token', [AnakController::class, 'updateFcmTokenAnak'])->whereNumber('id');
 
+        // AN9/G2.1 — Upload GPS pergerakan realtime dari Companion App Android (FusedLocationProviderClient).
+        // Spesifik 3 segment URL, HARUS sebelum wildcard /anak/{id} (Laravel first-match wins rule KONVENSI.md L114).
+        // GATE OWNERSHIP: Endpoint mewajibkan pairing_pin ATAU qr_pairing_code minimal salah satu NON EMPTY + COCOK dengan row ProfilAnak target ID.
+        Route::post('/{id}/gps', [AnakController::class, 'uploadGpsPergerakan'])->whereNumber('id');
+
         Route::get('/', [AnakController::class, 'index']);
         Route::get('/{id}', [AnakController::class, 'show'])->whereNumber('id');
         Route::post('/', [AnakController::class, 'store']);

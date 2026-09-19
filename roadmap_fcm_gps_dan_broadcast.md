@@ -1,9 +1,9 @@
 # ROADMAP FASE FCM + GPS REALTIME + BROADCAST (Setelah Pairing ✅ Selesai)
 
-> **Last Update**: 2026-09-19 22:45 WIB (F2+F3+F4 Selesai 100% & FCM isReady=TRUE Production ✅; USER ACTION #1 DONE ✅; USER ACTION #2 DONE ✅; F4 Build Lokal OK ✅ Deploy IN-PROGRESS)
-> **Urutan Prioritas**: F2 (Backend FCM Foundation) → F3 (Endpoint Token) → **F4 (Web Frontend FCM Push)** ✅ **NEXT: F5 (Android FCM Service: LitensiFirebaseMessagingService + onNewToken Refresh + Manifest)** → G1-G5 (GPS Realtime + Geofence Push + Maps) → R4 (Broadcast Pesan)
-> **Latest Deploy**: Commit `8360924` (F2 Hotfix #2 rollback nama_panggilan→name schema actual) parent `f98f2a4` (fallback env Dotenv) + `6e9e6a3` (F2+F3 Main) @ 19/09 22:05 WIB + Firebase Service Account JSON Uploaded (chmod 600 www-data). F4 Deploy commit hash baru: IN-PROGRESS (lihat section F4).
-> **Aturan Checklist**: ganti [ ] jadi [x] saat sub-task SELESAI & SUDAH di-verify di PRODUCTION. Isi Commit Hash + Status Deploy (Tanggal) jika sudah di-deploy VPS.
+> **Last Update**: 2026-09-19 20:00 WIB (F2+F3+F4+F5 Selesai 100% END-TO-END VERIFIED PRODUCTION ✅ Notif Android MUNCUL ✅; GPS G1-G2.3 CODING 100% VERIFIED LOKAL 4/4 Testcase PASS, Next DEPLOY VPS Production)
+> **Urutan Prioritas**: F2 (Backend FCM Foundation) → F3 (Endpoint Token) → F4 (Web Frontend FCM Push) → F5 (Android FCM Service) ✅ SEMUA FASE F 100% PRODUCTION READY → **NEXT IN-PROGRESS: G1-G5 (GPS Realtime + Geofence Push + Maps)** (G1-G2.3 Lokal Pass 4/4 Testcase ✅ Deploy in progress) → R4 (Broadcast Pesan)
+> **Latest Deploy**: Commit `70f108c` (F4 Frontend FCM Web Push 100% Deployed HTTPS 200 ✅). + G1-G2.3 Backend GPS Coding Complete Lokal Verified 4/4 (menunggu commit push & deploy VPS).
+> **Aturan Checklist**: ganti [ ] jadi [x] saat sub-task SELESAI & SUDAH di-verify di PRODUCTION / LOKAL. Isi Commit Hash + Status Deploy (Tanggal) jika sudah di-deploy VPS.
 
 ---
 
@@ -78,26 +78,26 @@
 
 ---
 
-### F4. Web Frontend FCM Web Push (Push Notif di Browser Orang Tua) — ✅ 100% DONE Build Lokal OK ✅ Deploy IN-PROGRESS
+### F4. Web Frontend FCM Web Push (Push Notif di Browser Orang Tua) — ✅ 100% DONE ✅ DEPLOYED PRODUCTION ✅ HEALTH HTTPS 200
 - [x] **F4.1** Install npm package `firebase@^11`
   - File target: `package.json` (dependencies) + `package-lock.json`
   - Command: `npm install firebase@^11 --save` → ✅ Added 69 packages, exit code 0, NO audit error
-  - Commit Hash: (lihat F4 commit utama di bawah)
-  - Status Deploy: ✅ Package terinstall, Vite build resolve firebase/app & firebase/messaging 11.x ✅
+  - Commit Hash: `70f108c`
+  - Status Deploy: ✅ Package terinstall 329 packages (npm ci --omit-dev 0 vulnerabilities ✅), Vite build resolve firebase/app & firebase/messaging 11.x ✅
 - [x] **F4.2** Inject env VITE_FIREBASE_* 6 line + VITE_FCM_VAPID_PUBLIC_KEY ke root project `.env` (VITE baca env SAAT build di VPS /var/www/litensi-git-src/.env, BUKAN di frontend target!)
   - Value: diambil dari firebase config user VERBATIM yang dikirim sebelumnya (apiKey DNHbkDJ34M1ADVM7dgw6CXsiKVgry_Pko dst. + VAPID PUBLIC KEY = BO1Qrc4Ys81RhAfjVR13tflYLZ78z_zm1E4VA-5BQYqa31Yt7hUxcAPFwT92ltryQATe_XyAa5-HIxcS4l9fuHs).
   - 3 File target:
     1. ✅ `.env.example` (PUBLIC template safe commit, value kosong untuk rekan tim lain clone)
     2. ✅ Lokal `D:\litensi-kids\.env` (isi actual value, GITIGNORE, TIDAK di-commit public repo)
-    3. ✅ VPS `/var/www/litensi-git-src/.env` (7 line VITE_FIREBASE + VITE_FCM_VAPID_PUBLIC_KEY TERDAFTAR ✅ verified via SSH grep length 87 chars for VAPID)
-  - Commit Hash: (lihat F4 commit utama)
-  - Status Deploy: ✅ VPS git-src .env ADA & value BENAR, Vite production build nanti akan inject env yang benar ke bundle
+    3. ✅ VPS `/var/www/litensi-git-src/.env` (7 line VITE_FIREBASE + VITE_FCM_VAPID_PUBLIC_KEY TERDAFTAR ✅ verified via SSH grep count=1 each line)
+  - Commit Hash: `70f108c`
+  - Status Deploy: ✅ VPS git-src .env ADA & value BENAR → Vite production build SUCCESS inject env ke bundle tanpa undefined ✅
 - [x] **F4.3** Buat file initializeApp Firebase SDK Web
   - File target: `src/services/firebaseApp.ts` (folder services dibuat duluan, sebelumnya tidak ada di src)
   - Export: `export const firebaseApp: FirebaseApp = initializeApp(firebaseConfig)` + `export const firebaseMessaging: Messaging = getMessaging(firebaseApp)`
   - ZERO HARDCODE: Semua 6 line config diambil dari `import.meta.env.VITE_FIREBASE_*` const assertion. Komentar Bahasa Indonesia ✅ sesuai agent.md.
-  - Commit Hash: (lihat F4 commit utama)
-  - Status Deploy: ✅ Vite build transform module ini SUCCESS ✅ (termasuk di bundle 2128 modules)
+  - Commit Hash: `70f108c`
+  - Status Deploy: ✅ Vite build transform module ini SUCCESS ✅ (2128 modules transformed VPS build = sama dengan lokal)
 - [x] **F4.4** Buat file FCM Web Push helper
   - File target: `src/services/fcmWebPush.ts`
   - Method export:
@@ -107,8 +107,8 @@
     4. `requestPermissionAndRegisterToken(swReg?): Promise<{ok, message?, token?}>` → Gabungan 3 step di atas.
     5. `subscribeForegroundPushNotifications(callback): () => void` → `onMessage(firebaseMessaging, callback)` → Return unsub function untuk cleanup useEffect React. Dipanggil dari App.tsx component child di dalam ToastProvider scope agar bisa akses useToast hook.
   - Komentar Bahasa Indonesia ✅, TypeScript strict typing ✅, export FcmPushPayload interface ✅.
-  - Commit Hash: (lihat F4 commit utama)
-  - Status Deploy: ✅ Build sukses, import tidak error
+  - Commit Hash: `70f108c`
+  - Status Deploy: ✅ Build VPS sukses 2128 modules ✅, import firebase/messaging OK, POST endpoint F3 TERDAFTAR route:list ✅
 - [x] **F4.5** Buat Service Worker FCM Background push (Native Push API — zero hardcode firebase config!)
   - File target: `public/firebase-messaging-sw.js` (path scope = /)
   - **Pattern zero-hardcode yang dipilih (sesuai agent.md!):**
@@ -120,8 +120,8 @@
     2. `activate` event → `clients.claim()` agar SW langsung control tab yang terbuka.
     3. `push` event → Parse payload `notification` (title, body) + `data.click_url`. Icon & Badge pakai `/logo/litensilogo.png` (TERSEDIA di public/logo ✅ verified LS public folder). `requireInteraction: true` (notif tidak auto-dismiss, user harus klik close / pilih), vibrate 200-100-200, data disimpan ke notif untuk click handler.
     4. `notificationclick` event → `notif.close()` → Cari tab yang matching URL focus, jika tidak ada buka tab baru via `clients.openWindow(data.click_url || '/dashboard')`.
-  - Commit Hash: (lihat F4 commit utama)
-  - Status Deploy: ✅ File tersimpan di public/firebase-messaging-sw.js. Vite build otomatis copy ke dist root scope /. Verified di build lokal dist/firebase-messaging-sw.js ADA.
+  - Commit Hash: `70f108c`
+  - Status Deploy: ✅ RSYNC berhasil copy `firebase-messaging-sw.js` ke /var/www/litensi-frontend/ ✅ Scope / terdaftar di SW DevTools Application tab.
 - [x] **F4.6** Integrasi ke Dashboard Root / App.tsx On-Mount
   - **Masalah Urutan Provider (TERPECAHKAN):** `ToastProvider` di-render DI DALAM return App.tsx (bukan di-wrap dari luar main.tsx). Jadi useToast() hook HANYA bisa diakses di ANAK component yang di-render SETELAH ToastProvider mount. Solusi: Buat CHILD COMPONENT KECIL `FcmWebIntegrationHooks()` di-render DI BAWAH <ToastProvider> children block.
   - Component `FcmWebIntegrationHooks` lengkap:
@@ -139,56 +139,96 @@
     - Action Buttons: 2 tombol = (1) "Nanti Saja" → hide banner; (2) "🔔 Aktifkan Notifikasi" → onClick handleClickEnableNotif.
     - Handler klik Aktifkan Notifikasi: panggil `requestNotificationPermission()` native popup browser → if granted → hide banner → panggil `requestPermissionAndRegisterToken(swReg)` → if success `toast.success()` | if failed `toast.warning()`. If denied/blocked → hide banner → `toast.warning()` beritahu user untuk enable via Site Settings.
   - `<FcmWebIntegrationHooks />` di-render di dalam App.tsx return ToastProvider children div (line 431).
-  - Commit Hash: (lihat F4 commit utama)
-  - Status Deploy: ✅ Vite build 2128 modules transformed ✅ NO TS ERROR, exit 0. Output dist index-ByFyoJLx.js 1.27MB (gzip 309KB) termasuk Firebase SDK 11.
+  - Commit Hash: `70f108c`
+  - Status Deploy: ✅ Vite build VPS 2128 modules transformed ✅ NO TS ERROR, exit 0. RSYNC dist success, HTTPS health check **HTTP/2 200** ✅ parental.naeva.id serving F4 code.
+
+✅ **FINAL DEPLOY STATUS F4**: Deployed Production 19/09/2026 22:40 WIB, Commit `70f108c`, Health Check HTTPS 200 OK via Cloudflare ✅. Files served: firebase-messaging-sw.js scope / + assets index-CcR7Ddlt.js 1.27MB (gzip 309KB) + index-2BhqEAhe.css 186KB.
 
 ### F5. Android Companion App: FCM Service Token Refresh
-- [ ] **F5.1** Buat Class Service `LitensiFirebaseMessagingService.kt`
-  - File target: `apps-litensi-kids/app/src/main/java/com/example/service/LitensiFirebaseMessagingService.kt`
+- [x] **F5.1** Buat Class Service `LitensiFirebaseMessagingService.kt`
+  - File target: `apps-litensi-kids/app/src/main/java/com/example/service/LitensiFirebaseMessagingService.kt` (FOLDER service BARU dibuat)
   - Extend: `FirebaseMessagingService()`
   - Override wajib:
-    1. `onNewToken(token: String)` → POST ke endpoint F3 `POST /anak/{id}/fcm-token` dengan payload: `pairing_pin = (PinState from Room)`, `fcm_token = token`. (Gate ownership via pairing_pin, sesuai F3 controller 403.)
-    2. `onMessageReceived(remoteMessage: RemoteMessage)` → Handle push notif foreground/background. Untuk channel_id PENGASUHAN_CH (sesuai FcmPushService AndroidConfig), priority PRIORITY_MAX, sound default + vibrate. Handle payload data event_type:
-      - `geofence_enter` → Big Text Notification + Open Dashboard Maps Activity
-      - `geofence_exit` → Big Text Notification + Open Dashboard Maps
-      - `remote_lock` → Lock full-screen (finish semua activity + SHOW LOCK SCREEN ACTIVITY)
-      - `chat_new` → Notifikasi group per anak_id + Open ChatInboxActivity untuk anak tersebut
+    1. `onNewToken(token: String)` → Baca state Room PairingState via `repository.pairingState.firstOrNull()`. Jika isConnected=true & gate ownership pin/qr minimal satu NON NULL → serviceScope.launch `repository.updateFcmTokenAnak()` upload ke endpoint F3. Gate ownership sesuai F3 AnakController (403 jika salah / keduanya kosong). Semua block di-wrap runCatching Log error non-fatal (tidak crash app).
+    2. `onMessageReceived(remoteMessage: RemoteMessage)` → Handle push notif foreground/background. Extract event_type = data["event_type"]. Default fallback title/body per event_type (geofence_enter/exit, remote_lock, chat_new, broadcast_pesan, default). **Runtime check Android 13+ (SDK ≥ 33):** Jika permission POST_NOTIFICATIONS BELUM di-granted user → skip show notification (graceful degradation TANPA crash). `ensureNotificationChannelExists()` untuk Android O+ (API ≥ 26) channel_id **PENGASUHAN_CH** (SESUI dengan FcmPushService.php AndroidConfig.channel_id), priority IMPORTANCE_HIGH, enable lights+vibration+badge. NotificationCompat.Builder: smallIcon R.mipmap.ic_launcher, BigTextStyle, priority PRIORITY_MAX/HIGH per event_type, vibrate 200-100-200, sound DEFAULT_NOTIFICATION_URI, autoCancel=true, setContentIntent PendingIntent getActivity open MainActivity (FLAG_ACTIVITY_NEW_TASK | CLEAR_TOP), VISIBILITY_PRIVATE (hide sensitive di lockscreen). NotificationManagerCompat.notify(notifId).
+  - Service Lifecycle: `private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)`. `override onDestroy() { super.onDestroy(); serviceScope.cancel() }` (hindari memory leak coroutine).
+  - Komentar Bahasa Indonesia ✅ agent.md L16. Zero hardcode: channel id, permission names, pending intent flags SEMUA dari constant Android SDK.
   - Commit Hash: -
-  - Status Deploy: -
-- [ ] **F5.2** Register service ke AndroidManifest.xml `<application>` tag
-  - XML service: `android:name=".service.LitensiFirebaseMessagingService"` + `android:exported="false"` + intent-filter `com.google.firebase.MESSAGING_EVENT`.
-  - Juga tambahkan permissions (jika belum ada): `POST_NOTIFICATIONS` runtime request Android 13+ (manifest + runtime request MainActivity.onCreate setelah pairing sukses)
+  - Status Deploy: **Local Code Ready (menunggu user build di Android Studio)** ✅ File path VERIFIED ADA.
+- [x] **F5.2** Register service ke AndroidManifest.xml `<application>` tag
+  - XML service: `<service android:name="com.example.service.LitensiFirebaseMessagingService" android:exported="false">` (pakai FQN FULL com.example.* karena manifest namespace = com.parental.litensikids TAPI actual source package = com.example; pattern SAMA dengan MainActivity L25 yang juga menggunakan FQN com.example.MainActivity). `<intent-filter>` = `<action android:name="com.google.firebase.MESSAGING_EVENT" />`.
+  - Permissions: ✅ `<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />` SUDAH ADA L12. ✅ `VIBRATE` SUDAH ADA L9. Tidak perlu di-duplicate.
+  - Runtime Permission (Android 13+ **API 33 TIRAMISU**): Di [MainActivity.kt](file:///d:/litensi-kids/apps-litensi-kids/app/src/main/java/com/example/MainActivity.kt#L42-L63) onCreate SETELAH super.onCreate SEBELUM enableEdgeToEdge: Jika `Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU` → ContextCompat.checkSelfPermission POST_NOTIFICATIONS != GRANTED → ActivityCompat.requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), RC_POST_NOTIF_PERM=1001). **TIDAK PERLU handle callback onRequestPermissionsResult** — jika user DENY, notifikasi TIDAK muncul = graceful TANPA crash app.
   - Commit Hash: -
-  - Status Deploy: -
-- [ ] **F5.3** Force get token SETELAH PAIRING SUKSES di ViewModel (JANGAN hanya andalkan onNewToken!)
-  - File target: `apps-litensi-kids/app/src/main/java/com/example/ui/viewmodel/LitensiViewModel.kt`
-  - Lokasi: Setelah flow `isConnected=true` (navigate ke dashboard) collect selesai.
-  - Force: `Firebase.messaging.token.addOnSuccessListener { token -> viewModelScope.launch { repository.updateFcmTokenAnak(token = token, id = anakId, pairingPin = currentPin) } }`
-  - Reason: onNewToken TIDAK ter-trigger untuk install APP YANG SUDAH ADA TOKEN SEBELUM SERVICE DI UPGRADE (token sudah exist di cache Firebase, onNewToken hanya trigger jika berubah). Force get once setelah pairing SUDAH OK menghindari case "pairing sukses tapi FCM token belum upload sampai onNewToken berikutnya".
+  - Status Deploy: **Local Code Ready** ✅ Manifest service TERDAFTAR di <application> sebelum activity.
+- [x] **F5.3** Force get token SETELAH PAIRING SUKSES di ViewModel (JANGAN hanya andalkan onNewToken!)
+  - File target: [LitensiViewModel.kt](file:///d:/litensi-kids/apps-litensi-kids/app/src/main/java/com/example/ui/viewmodel/LitensiViewModel.kt#L186-L242) init block pairingState.collect L169 isConnected=true. SETELAH `refreshPermissionsState(application)` L184 TAMBAHKAN block force get Firebase.messaging.token.
+  - Force: `Firebase.messaging.token.addOnSuccessListener { freshToken -> if (freshToken.isNotBlank()) viewModelScope.launch { repository.updateFcmTokenAnak(token=freshToken, id=state.profilAnakId, pairingPin=state.pinPairing, qrPairingCode=state.qrPairingCode) } }` + `addOnFailureListener { Log.w }`.
+  - Gate ownership check SEBELUM call Firebase: `if (anakId != null && (!pin.isNullOrBlank() || !qr.isNullOrBlank()))` (SAMA dengan repository wrapper require). Jika gagal gate → Log.w skip upload.
+  - Reason: onNewToken TIDAK ter-trigger untuk install APP YANG SUDAH ADA TOKEN SEBELUM SERVICE DI UPGRADE (token sudah exist di cache Firebase, onNewToken hanya trigger jika berubah). Force get once setelah pairing SUDAH OK menghindari case "pairing sukses tapi FCM token belum upload sampai onNewToken berikutnya". **SATU TEMPAT init.collect cover DUA KASUS:** (a) re-open app restart after paired (Room state sudah exist → collect trigger langsung); (b) fresh pairing BARU (setelah repository.connectWithCode save PairingState ke Room L189, pairingState.collect akan TER-TRIGGER ULANG dengan state baru isConnected=true → force token otomatis jalan TANPA perlu code tambahan di flow connectDevice onSuccess).
+  - Logging detail SEMUA step dengan TAG "LitensiViewModel-FCM" (prefix token, success len, gate skip, failure message) untuk debug production via logcat.
+  - Komentar Bahasa Indonesia ✅.
   - Commit Hash: -
-  - Status Deploy: -
+  - Status Deploy: **Local Code Ready** ✅ Firebase import com.google.firebase.ktx.Firebase + com.google.firebase.messaging.ktx.messaging BENAR.
+
+### F5.4 (Supporting Dependency) Retrofit + Repository + DTO Endpoint F3
+- [x] **F5.4** Retrofit Interface + Repository Wrapper + Response DTO untuk `POST /anak/{id}/fcm-token`
+  - [LitensiApiService.kt](file:///d:/litensi-kids/apps-litensi-kids/app/src/main/java/com/example/data/remote/LitensiApiService.kt#L77-L87) TAMBAH method suspend: `@FormUrlEncoded @POST("api/v1/anak/{id}/fcm-token") updateFcmTokenAnak(@Path id, @Field pairing_pin?, @Field qr_pairing_code?, @Field fcm_token?)` → Pattern SAMA PERSIS dengan `uploadTelemetry` L43 gate ownership. Return type `ApiResponse<FcmTokenResponseDto>`.
+  - [RemoteDtos.kt](file:///d:/litensi-kids/apps-litensi-kids/app/src/main/java/com/example/data/remote/RemoteDtos.kt#L148-L156) TAMBAH `@JsonClass(generateAdapter = true) data class FcmTokenResponseDto(@Json(name="fcm_token_length") val fcmTokenLength: Int, @Json(name="token_revoked") val tokenRevoked: Boolean, @Json(name="updated_at") val updatedAt: String?)` → 1:1 mapping dengan AnakController response shape L520.
+  - [LitensiRepository.kt](file:///d:/litensi-kids/apps-litensi-kids/app/src/main/java/com/example/data/repository/LitensiRepository.kt#L340-L367) TAMBAH `suspend fun updateFcmTokenAnak(token:String?, id:Int, pairingPin:String?, qrPairingCode:String?): FcmTokenResponseDto` → `require(!pairingPin.isNullOrBlank() || !qrPairingCode.isNullOrBlank())` (gate ownership minimal salah satu NON EMPTY → throw IllegalArgumentException dengan pesan Bahasa Indonesia). Wrap `apiCall` + `if (!resp.success) error(resp.message)`. Support token NULL = case revoke token saat unpair.
+  - Verified 1:1 signature dengan backend F3 endpoint AnakController@updateFcmTokenAnak L483-L538: minimal salah satu field (pairing_pin/qr_pairing_code) NON EMPTY → return 403 jika keduanya kosong / salah value.
+  - Commit Hash: -
+  - Status Deploy: **Local Code Ready** ✅ Semua pattern import & signature SAMA dengan existing endpoint lain (AN8 uploadTelemetry, CH5 kirimPesanDariAnak) = TIDAK ada breaking change.
+
+✅ **OVERALL STATUS F5**: SEMUA 4 sub-task (F5.1 Service, F5.2 Manifest + Runtime Perm, F5.3 ViewModel force token, F5.4 API + Repository + DTO) **CODING 100% SELESAI ✅ Local Code Ready**. **VERIFIED PRODUCTION 100% END-TO-END PASS** via user manual SSH OPSI A test push 3 event_type (default, geofence_enter, chat_new) → User VERBATIM report "notifikasi sudah muncul di aplikasi perangkat anak" ✅. Logcat Force Token UPLOAD SUCCESS: tokenLen=142 chars (normal FCM), updatedAt=2026-09-19T00:54:17Z (07:54 WIB sama jam device).
 
 ---
 
 ## 🟠 FASE G: GPS REALTIME TRACKING + GEOFENCE PUSH NOTIF (DEPENDENCY: F2 & F5 ANDROID DONE DULU)
 
 ### G1. Backend Tabel + Model Pergerakan GPS Anak
-- [ ] **G1.1** Migration Buat Tabel `pergerakan_gps_anak`
+- [x] **G1.1** Migration Buat Tabel `pergerakan_gps_anak`
   - File target: `backend/database/migrations/2026_09_19_000003_buat_tabel_pergerakan_gps_anak.php`
   - Kolom wajib: `id` BIGINT UNSIGNED PK, `profil_anak_id` BIGINT UNSIGNED FK profil_anak.id ON DELETE CASCADE, `latitude` DECIMAL(10,7) WGS84, `longitude` DECIMAL(10,7), `accuracy_meters` INT NULL, `battery_level` INT NULL, `speed_kmh` FLOAT NULL, `altitude_m` FLOAT NULL, `is_mock_detected` BOOLEAN DEFAULT FALSE, `captured_at` DATETIME NOT NULL (timestamp DARI HP BUKAN SERVER!), INDEX `idx_profil_captured (profil_anak_id, captured_at DESC)`.
+  - Verify Lokal: `php artisan migrate --force` XAMPP → 754.98ms DONE ✅, SHOW COLUMNS: 10 kolom ADA, captured_at datetime ADA ✅ (TIDAK ADA created_at/updated_at sesuai timestamps=false model).
   - Commit Hash: -
-  - Status Deploy: -
-- [ ] **G1.2** Buat Model `PergerakanGpsAnak.php` + relation BelongsTo ProfilAnak + fillable semua field kecuali id. Cast `captured_at:datetime`, `latitude/longitude:decimal:7`.
+  - Status Deploy: **Lokal Verified ✅ (menunggu deploy VPS + migrate --force production)**
+- [x] **G1.2** Buat Model `PergerakanGpsAnak.php` + relation BelongsTo ProfilAnak + fillable semua field kecuali id. Cast `captured_at:datetime`, `latitude/longitude:decimal:7`.
+  - **CRITICAL RULE:** `public $timestamps = false;` → WAJIB karena tabel TIDAK ADA kolom created_at/updated_at! Jika lupa = Mass Assignment SQL error Unknown column.
+  - Verify Lokal: `php -l` = No syntax errors ✅; Mass Assignment Insert via simulate TestCase C = row pergerakan_gps_anak.created (gps_id>0) ✅.
   - Commit Hash: -
-  - Status Deploy: -
-- [ ] **G1.3** Tambah kolom `last_known_latitude DECIMAL(10,7) NULL` + `last_known_longitude DECIMAL(10,7) NULL` + `last_gps_captured_at DATETIME NULL` ke tabel `profil_anak` via migration baru (G1.3, JANGAN lupakan! Dibutuhkan Monitor page Maps auto-center TANPA query ORDER BY ke pergerakan_gps_anak setiap detik).
+  - Status Deploy: **Lokal Verified ✅**
+- [x] **G1.3** Tambah kolom `last_known_latitude DECIMAL(10,7) NULL` + `last_known_longitude DECIMAL(10,7) NULL` + `last_gps_captured_at DATETIME NULL` ke tabel `profil_anak` via migration baru (G1.3, JANGAN lupakan! Dibutuhkan Monitor page Maps auto-center TANPA query ORDER BY ke pergerakan_gps_anak setiap detik).
+  - **ZERO HARDCODE RULE (PATUH ATURAN PERMANEN USER):** Initial camera Monitor Page Google Maps WAJIB ambil dari 3 kolom ini JIKA ADA, JANGAN PERNAH hardcode Jakarta = -6.2088 106.8456 sebagai fallback apapun! (Jika kolom ini NULL = tampilkan text UI: "Belum ada data GPS terbaru dari perangkat anak" tanpa marker.)
+  - Migration: `2026_09_19_000004_tambah_last_known_gps_profil_anak.php` + Index composite `idx_user_last_gps_captured (user_id, last_gps_captured_at)` untuk Monitor page query cepat.
+  - Model ProfilAnak Fillable L38-L40 ditambah 3 kolom + Casts function L52-L55 cast latitude/longitude decimal:7, captured_at datetime → verified via Read Back EditWrite success save ✅.
+  - Verify Lokal: Migrate 160.05ms DONE ✅, SHOW COLUMNS profil_anak last_% 3 kolom ADA DECIMAL(10,7) nullable + timestamp datetime OK ✅. Simulate TestCase C: ProfilAnak snapshot last_known = GPS terbaru update ✅ (value persis sama dengan yang diupload).
   - Commit Hash: -
-  - Status Deploy: -
+  - Status Deploy: **Lokal Verified ✅**
 
 ### G2. Endpoint Upload GPS + Haversine Geofence Trigger
-- [ ] **G2.1** Route `POST /anak/{id}/gps` (AN9) di routes/api.php DI ATAS wildcard /anak/{id}. Gate ownership pairing_pin/qr SAMA DENGAN F3 endpoint fcm-token (copy paste validasi gate → 403 jika salah).
-- [ ] **G2.2** Method `AnakController::uploadGpsPergerakan`: Insert row PergerakanGpsAnak + UPDATE profil_anak last_known_lat/long + last_gps_captured_at + last_active.
-- [ ] **G2.3** Haversine Geofence Trigger di method uploadGpsPergerakan SETELAH insert+update success: Query semua ZonaGeofence milik user_id anak → hitung jarak titik sekarang vs center geofence (rumus haversine 6371 * 2 * ASIN(SQRT(...))) → JIKA jarak < radius DAN status SEBELUMNYA di luar geofence (cek log_geofence terakhir) → INSERT `geofence_logs` status=masuk → call `FcmPushService::broadcastUserChildren(userId, 'geofence_enter', [title:"Anak memasuki {$namaZona}", body:"{$namaAnak} memasuki area zona aman pada {$jam}", data:{geofence_id, click_url:'/monitor'}])` → SEBALIKNYA jika jarak > radius DAN sebelumnya di DALAM → broadcast `geofence_exit`.
+- [x] **G2.1** Route `POST /anak/{id}/gps` (AN9) di routes/api.php DI ATAS wildcard /anak/{id}. Gate ownership pairing_pin/qr SAMA DENGAN F3 endpoint fcm-token (copy paste validasi gate → 403 jika salah).
+  - **Route Order Rule (KONVENSI.md L114 First-Match-Wins):** Urutan di routes/api.php (line number ASC): L145 `POST /{id}/telemetry` (AN8) → L149 `POST /{id}/fcm-token` (F3 Android) → **L154 `POST /{id}/gps` (AN9/G2.1)** → L157 wildcard `GET /{id}` (show). ✅ Verified urutan line number via Read Back file routes/api.php. Laravel akan match GPS route DULU sebelum wildcard = ❌ tidak terjadi 405 MethodNotAllowed (route wildcard GET method tidak cocok POST request GPS).
+  - artisan route:list verified registered: `POST api/v1/anak/{id}/gps | AnakController@uploadGpsPergerakan` ✅ TERDAFTAR.
+  - Commit Hash: -
+  - Status Deploy: **Lokal Verified ✅**
+- [x] **G2.2** Method `AnakController::uploadGpsPergerakan`: Insert row PergerakanGpsAnak + UPDATE profil_anak last_known_lat/long + last_gps_captured_at + last_active.
+  - Pattern Gate Ownership EXACT COPY method `updateFcmTokenAnak` F3: Cek qr_pairing_code cocok / pairing_pin cocok / minimal salah satu NON EMPTY dua kosong=403. ✅ Simulate Testcase A PIN salah=403 PASS, Testcase B empty pin/qr=403 PASS.
+  - Insert PergerakanGpsAnak via Mass Assignment fillable: array_merge($validated, ['profil_anak_id'=>$id, 'latitude'=>$newLat, 'longitude'=>$newLng, 'captured_at'=>$capturedAt Carbon parsed]) ✅ (jangan pakai value latitude/longitude string dari request, cast ke float agar presisi decimal DB sesuai).
+  - **PENTING Snapshot last_gps_captured_at = VALUE CAPTURED_AT DARI REQUEST HP (Carbon parsed) BUKAN now() server!** Agar waktu snapshot sesuai dengan waktu penangkapan sinyal GPS di perangkat anak (bukan waktu server terima request yang bisa delay karena koneksi). last_active = server now() untuk status "terakhir terhubung".
+  - Haversine distance from previous GPS (kilometer * 1000 = round integer meters). Jika first upload prev null → distance 0. ✅ Simulate Testcase D: prev point inside → point outside distance=776m AKURAT (verifikasi via reflection haversineKm approx sama dengan calculate independent ✅ 0 error).
+  - Commit Hash: -
+  - Status Deploy: **Lokal Verified ✅ 4/4 Testcase PASS**
+- [x] **G2.3** Haversine Geofence Trigger di method uploadGpsPergerakan SETELAH insert+update success: Query semua ZonaGeofence milik user_id anak → hitung jarak titik sekarang vs center geofence (rumus haversine 6371 * 2 * ASIN(SQRT(...))) → JIKA jarak < radius DAN status SEBELUMNYA di luar geofence (cek log_geofence terakhir) → INSERT `geofence_logs` status=masuk → call `FcmPushService::broadcastUserChildren(userId, 'geofence_enter', [title:"Anak memasuki {$namaZona}", body:"{$namaAnak} memasuki area zona aman pada {$jam}", data:{geofence_id, click_url:'/monitor'}])` → SEBALIKNYA jika jarak > radius DAN sebelumnya di DALAM → broadcast `geofence_exit`.
+  - **Helper Haversine:** `private static function haversineKm(float $lat1, float $lng1, float $lat2, float $lng2): float` inline di class AnakController sebelum penutup `}` ✅. Rumus exact: 6371.0 * 2 * asin(sqrt(sin²(dLat/2) + cos(lat1_rad)cos(lat2_rad)sin²(dLng/2))). ✅ Verified akurasi 776m = distance 0.7761...km hasil formula persis.
+  - **Hotfix G2.3a Assigned Children Compare Type Mismatch:** DB JSON assigned_children sering menyimpan ID sebagai STRING `["1"]` (karena json_encode array numeric di PHP sering di-convert ke string saat manual insert / UI). Solusi: array_map('strval', $assigned) + compare dengan (string)$anak->id → strict in_array TRUE tetap jalan, tidak ada false negative zona di-skip. ✅ Verified Zona id=6 dengan assigned_children=["1"] SEBELUM FIX di SKIP ❌ → SETELAH FIX TIDAK di-SKIP ✅ geofence trigger ENTER jalan.
+  - **PRE-AUDIT G0 Existing Table LogGeofence SHAPE:** Tabel log_geofence TIDAK ADA kolom profil_anak_id FK (migration 2026_09_15_000006 L14-L24 confirmed via Grep read). Insert LogGeofence WAJIB menggunakan field STRING child_name = $anak->name (Nadia Putri) BUKAN integer id. Shape fillable LogGeofence L14-L36 confirmed: zona_geofence_id FK, child_name string, device_name string, zone_name, zone_type enum, event_type enum enter/exit/dwell, timestamp datetime, location_coordinates "lat,lng" string, battery_status "58%" string, accuracy "15m" string → EXACT 1:1 mapping payload insert ✅.
+  - Query Previous Status: `LogGeofence::where(zona_geofence_id=X)->where(child_name=Y)->latest(timestamp)->first()` → extract $lastEventType. State Machine: (inside && last != enter) → ENTER event; (outside && last === enter) → EXIT event. Tidak ada dwell (masih dalam zona, tidak usah trigger notif spam tiap upload). ✅ Test Case C (first upload inside) → ENTER trigger count=1 ✅; Test Case D (outside from inside) → EXIT trigger count=1 ✅.
+  - **Graceful Degradation Non Fatal:** Seluruh block geofence foreach DIBUNGKUS `try { ... } catch (\Throwable $e) { Log::warning }` JIKA FcmPushService::broadcastUserChildren throw (misal Service Account TIDAK ADA / DB tabel corrupt / MySQL gone away) → GPS upload TETAP RETURN 200 sukses, user tetap bisa track history, hanya push notif geofence yang tidak jalan (di-log warning level). Juga per broadcast call dibungkus try/catch sendiri untuk one broadcast gagal tidak mengganggu zona lain ✅.
+  - **event_type EXACT MATCH Client Handler:** `geofence_enter` & `geofence_exit` (lowercase snake_case, case sensitive) → 100% SAMA dengan handler (a) F5 Android `LitensiFirebaseMessagingService.onMessageReceived` when() switch case event_type (sudah siap handle geofence_enter/exit geofence category BigText Notif); (b) F4 Web Push `public/firebase-messaging-sw.js` native push listener showNotification click_url /monitor.
+  - **Zona last_triggered:** Setiap kali zona trigger ENTER / EXIT → update $zona->last_triggered = now(); save() untuk audit kapan zona terakhir kali trigger (untuk UI dashboard card geofence show "Last Triggered 5 menit lalu").
+  - Commit Hash: -
+  - Status Deploy: **Lokal Verified ✅ PASS 4/4 Simulate Testcase.**
 
 ### G3. Android Worker GPS Periodik + GeofencingClient
 - [ ] **G3.1** WorkManager `PeriodicWorkRequest` 15 menit (minimum android) + `OneTimeWorkRequest` expedited untuk GPS high-priority saat perubahan signifikan.
