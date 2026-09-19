@@ -163,13 +163,13 @@ private fun checkRealPermission(context: Context, permName: String): Boolean {
             } else {
                 true
             }
-            if (!appNotifEnabled) return@when false
+            if (!appNotifEnabled) return false
             // (2) Channel GPS_LIVE_SERVICE_CHANNEL SUDAH ADA dan TIDAK dimatikan / di-set IMPORTANCE_NONE user?
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 val channel = notifManager.getNotificationChannel(LiveGpsForegroundService.CHANNEL_ID)
                 if (channel != null) {
                     // User block channel dengan importance none = foreground startForeground WILL CRASH / no notif visible.
-                    if (channel.importance == NotificationManager.IMPORTANCE_NONE) return@when false
+                    if (channel.importance == NotificationManager.IMPORTANCE_NONE) return false
                 }
             }
             true
@@ -183,8 +183,10 @@ private fun checkRealPermission(context: Context, permName: String): Boolean {
             } else {
                 val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
                 runCatching {
+                    // Hardcode string op name agar compileSdk apapun tetap OK (constant AppOpsManager ini ada di API 31+).
+                    val OP_NAME_START_BACKGROUND_ACTIVITIES = "android:start_activities_from_background"
                     val mode = appOps.unsafeCheckOpNoThrow(
-                        AppOpsManager.OPSTR_START_ACTIVITIES_FROM_BACKGROUND,
+                        OP_NAME_START_BACKGROUND_ACTIVITIES,
                         android.os.Process.myUid(),
                         context.packageName
                     )
