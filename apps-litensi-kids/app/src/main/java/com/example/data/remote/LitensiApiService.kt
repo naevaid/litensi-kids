@@ -84,4 +84,35 @@ interface LitensiApiService {
         @Field("qr_pairing_code") qrPairingCode: String? = null,
         @Field("fcm_token") fcmToken: String? = null
     ): ApiResponse<FcmTokenResponseDto>
+
+    // (G3.4 / AN10) — Upload GPS pergerakan realtime dari perangkat anak ke backend.
+    // Gate kepemilikan: EXACT COPY AN8/AN9 pattern. Minimal salah satu pairing_pin ATAU qr_pairing_code NON EMPTY & value COCOK DB row ProfilAnak target ID.
+    // KEDUA KOSONG → backend return 403 gate kepemilikan gagal. Salah SATU dikirim TIDAK cocok value → 403.
+    // captured_at WAJIB ISO 8601 WAKTU HP (bukan server!) — akan dijadikan snapshot ProfilAnak.last_gps_captured_at di backend.
+    @FormUrlEncoded
+    @POST("api/v1/anak/{id}/gps")
+    suspend fun uploadGpsPergerakan(
+        @Path("id") id: Int,
+        // === GATE OWNERSHIP (minimal salah satu NON EMPTY!) ===
+        @Field("pairing_pin") pairingPin: String? = null,
+        @Field("qr_pairing_code") qrPairingCode: String? = null,
+        // === FIELD GPS WAJIB ===
+        @Field("latitude") latitude: Double,
+        @Field("longitude") longitude: Double,
+        @Field("captured_at") capturedAtIso: String,
+        // === FIELD OPSIONAL (nullable) ===
+        @Field("accuracy_meters") accuracyMeters: Int? = null,
+        @Field("battery_level") batteryLevel: Int? = null,
+        @Field("speed_kmh") speedKmh: Double? = null,
+        @Field("altitude_m") altitudeMeters: Double? = null,
+        @Field("is_mock_detected") isMockDetected: Boolean? = null
+    ): ApiResponse<GpsUploadResponseDto>
+
+    // (G3.8 / GF1) — GET list semua zona geofence milik user_id tertentu (ID Orang Tua).
+    // Route GF1 GeofenceController L13-L35 backend. Zero hardcode user_id default (kosong → [] jujur).
+    // Dipanggil oleh GeofenceManager.loadAndRegisterAllZones() saat perangkat baru connect pairing.
+    @GET("api/v1/geofence")
+    suspend fun getGeofenceList(
+        @Query("user_id") userId: Int
+    ): ApiResponse<List<ZonaGeofenceDto>>
 }

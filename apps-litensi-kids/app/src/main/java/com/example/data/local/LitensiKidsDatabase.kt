@@ -7,6 +7,7 @@ import androidx.room.RoomDatabase
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.example.data.model.ChildProfileEntity
 import com.example.data.model.PairingStateEntity
+import com.example.data.model.PergerakanGpsCacheEntity
 import com.example.data.model.RewardEntity
 import com.example.data.model.SosLogEntity
 import com.example.data.model.TaskEntity
@@ -20,10 +21,11 @@ import kotlinx.coroutines.launch
         TaskEntity::class,
         RewardEntity::class,
         SosLogEntity::class,
-        ChildProfileEntity::class
+        ChildProfileEntity::class,
+        PergerakanGpsCacheEntity::class
     ],
-    // (B3) Bump version 1 → 2 karena schema PairingStateEntity bertambah 4 field baru
-    version = 2,
+    // (G3.3) Bump version 2 → 3 karena tambah entity PergerakanGpsCacheEntity (tabel pergerakan_gps_cache).
+    version = 3,
     exportSchema = false
 )
 abstract class LitensiKidsDatabase : RoomDatabase() {
@@ -33,6 +35,8 @@ abstract class LitensiKidsDatabase : RoomDatabase() {
     abstract fun rewardDao(): RewardDao
     abstract fun sosDao(): SosDao
     abstract fun childProfileDao(): ChildProfileDao
+    // (G3.2) DAO cache GPS pending upload offline
+    abstract fun gpsCacheDao(): GpsCacheDao
 
     companion object {
         @Volatile

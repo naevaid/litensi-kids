@@ -7,6 +7,7 @@ import androidx.room.Query
 import androidx.room.Update
 import com.example.data.model.ChildProfileEntity
 import com.example.data.model.PairingStateEntity
+import com.example.data.model.PergerakanGpsCacheEntity
 import com.example.data.model.RewardEntity
 import com.example.data.model.SosLogEntity
 import com.example.data.model.TaskEntity
@@ -73,4 +74,37 @@ interface ChildProfileDao {
 
     @Query("UPDATE child_profile SET lastCheckInTime = :checkInTime WHERE id = 1")
     suspend fun updateCheckInTime(checkInTime: String)
+}
+
+// (G3.2) DAO untuk cache GPS yang pending upload ke backend (offline support).
+// Batch limit = 10 row per upload (hemat kuota data).
+@Dao
+interface GpsCacheDao {
+    // Ambil SEMUA status PENDING urut ASC capturedAt (tua dulu, FIFO). LIMIT 10 = batch per upload.
+    @Query("SELECT * FROM pergerakan_gps_cache WHERE syncStatus = 'pending' ORDER BY capturedAtEpochMillis ASC LIMIT 10")
+    suspend fun getPendingBatch(limit: Int = 10): List<PergerakanGpsCacheEntity>
+
+    // Hitung total pending row (untuk debug / log worker)
+    @Query("SELECT COUNT(*) FROM pergerakan_gps_cache WHERE syncStatus = 'pending'")
+    suspend fun countPending(): Int
+
+    // Insert point GPS baru (setiap callback FusedLocationProviderClient)
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertGpsPoint(gps: PergerakanGpsCacheEntity): Long
+
+    // Update status setelah di-upload (SYNCED / FAILED + error message + increment retryCount)
+    @Update
+    suspend fun updateGpsPoint(gps: PergerakanGpsCacheEntity)
+
+    // Hapus semua yang status SYNCED (sudah di-upload, tidak perlu simpan lagi di local cache)
+    @Query("DELETE FROM pergerakan_gps_cache WHERE syncStatus = 'synced'")
+    suspend fun deleteSyncedRows()
+
+    // Hapus row tertentu jika batch > max (misal > 1000 row pending, hapus yang paling tua untuk hemat storage)
+    @Query("DELETE FROM pergerakan_gps_cache WHERE id IN (SELECT id FROM pergerakan_gps_cache ORDER BY capturedAtEpochMillis ASC LIMIT :deleteCount)")
+    suspend fun deleteOldestRows(deleteCount: Int)
+
+    // Hapus SEMUA cache (saat unpair / disconnect)
+    @Query("DELETE FROM pergerakan_gps_cache")
+    suspend fun clearAll()
 }

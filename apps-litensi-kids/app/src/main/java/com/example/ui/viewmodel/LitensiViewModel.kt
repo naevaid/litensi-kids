@@ -13,12 +13,15 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.local.LitensiKidsDatabase
+import com.example.data.location.GeofenceManager
+import com.example.data.location.GPSLocationManager
 import com.example.data.model.ChildProfileEntity
 import com.example.data.model.PairingStateEntity
 import com.example.data.model.RewardEntity
 import com.example.data.model.SosLogEntity
 import com.example.data.model.TaskEntity
 import com.example.data.repository.LitensiRepository
+import com.example.data.work.GPSUploadWorker
 import com.example.data.work.LitensiTelemetryWorker
 import com.google.firebase.Firebase
 import com.google.firebase.messaging.messaging
@@ -240,6 +243,35 @@ class LitensiViewModel(application: Application) : AndroidViewModel(application)
                             "pinLen=${pin?.length ?: 0}, qrLen=${qr?.length ?: 0} — skip upload."
                         )
                     }
+
+                    // ==========================================================================
+                    // (G3.10) SCHEDULE WORKER GPS + TELEMETRY + INIT LOCATION TRACKING + GEOFENCE
+                    // --------------------------------------------------------------------------
+                    // Dijalankan SETIAP KALI state pairing collect detect isConnected=true
+                    //   (cover 2 kasus: Fresh pairing BARU & Re-open app SETELAH HP restart).
+                    // ExistingPeriodicWorkPolicy.KEEP = jika worker sudah di-schedule, TIDAK dibuat ulang.
+                    // ==========================================================================
+                    val ctx = getApplication<Application>()
+                    if (anakId != null && userIdOrtu != null) {
+                        // 1. Schedule TelemetryWorker 15min (battery + usage stats upload AN8)
+                        LitensiTelemetryWorker.schedulePeriodic(ctx)
+                        Log.i("LitensiViewModel-G3", "TelemetryWorker schedulePeriodic KEEP done.")
+
+                        // 2. Schedule GPSUploadWorker 15min (flush cache GPS ke AN10 endpoint)
+                        GPSUploadWorker.schedulePeriodic(ctx)
+                        Log.i("LitensiViewModel-G3", "GPSUploadWorker schedulePeriodic KEEP done.")
+
+                        // 3. Mulai GPS tracking FusedLocationProviderClient (interval 5min, displacement 10m)
+                        GPSLocationManager.requestLocationUpdates(ctx, profilAnakId = anakId)
+                        Log.i("LitensiViewModel-G3", "GPSLocationManager requestLocationUpdates started for anak=$anakId")
+
+                        // 4. Load list zona geofence dari GF1 API → register ke GeofencingClient Play Services
+                        //    (asynchronous IO di GeofenceManager internal coroutine scope, tidak block UI)
+                        GeofenceManager.loadAndRegisterAllZones(ctx, profilAnakId = anakId, userIdOrtu = userIdOrtu)
+                        Log.i("LitensiViewModel-G3", "GeofenceManager loadAndRegisterAllZones triggered (async IO, user=$userIdOrtu)")
+                    } else {
+                        Log.w("LitensiViewModel-G3", "Skip schedule GPS/Telemetry worker: anakId=$anakId userIdOrtu=$userIdOrtu")
+                    }
                 }
             }
         }
@@ -299,12 +331,30 @@ class LitensiViewModel(application: Application) : AndroidViewModel(application)
 
     fun disconnectDevice() {
         viewModelScope.launch {
-            // (B7) Pastikan Worker di-cancel sebelum state disconnect (double safety)
-            LitensiTelemetryWorker.cancel(getApplication())
+            val ctx = getApplication<Application>()
+
+            // (B7) Cancel TelemetryWorker periodic 15min di-cancel sebelum state disconnect (double safety)
+            LitensiTelemetryWorker.cancel(ctx)
+
+            // (G3.10) Cancel GPSUploadWorker periodic 15min + expedited geofence one-time work
+            GPSUploadWorker.cancel(ctx)
+
+            // (G3.10) Stop FusedLocationProviderClient GPS tracking (agar tidak boros baterai setelah unpair)
+            GPSLocationManager.removeUpdates(ctx)
+
+            // (G3.10) Remove semua Geofence zone yang terdaftar dari Play Services GeofencingClient
+            GeofenceManager.removeAllZones(ctx)
+
+            // (G3.10) Hapus SEMUA cache GPS pending di Room local cache (tidak ada gunanya setelah unpair)
+            runCatching {
+                LitensiKidsDatabase.getDatabase(ctx).gpsCacheDao().clearAll()
+            }
+
             repository.disconnect()
             _currentScreen.value = AppScreen.WELCOME
             _chatMessages.value = emptyList() // bersihkan chat saat disconnect
             _toastMessage.value = "Perangkat telah terputus dari akun Orang Tua."
+            Log.i("LitensiViewModel-G3", "disconnectDevice: Semua worker + GPS + Geofence di-cleanup SUKSES.")
         }
     }
 

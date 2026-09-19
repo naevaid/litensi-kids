@@ -154,3 +154,57 @@ data class FcmTokenResponseDto(
     @Json(name = "token_revoked") val tokenRevoked: Boolean,
     @Json(name = "updated_at") val updatedAt: String?
 )
+
+// ============================================================
+// DTO GPS (G3.4 / AN10 POST /anak/{id}/gps) — Upload GPS Realtime Android → Backend
+// 1:1 mapping response KONVENSI.md AN10. Zero hardcode.
+// ============================================================
+@JsonClass(generateAdapter = true)
+data class GpsUploadResponseDto(
+    // PK row tabel pergerakan_gps_anak di backend (diperlukan jika perlu audit)
+    @Json(name = "gps_id") val gpsId: Long,
+    // ISO UTC captured_at yang diterima & disimpan DB backend (snapshot ProfilAnak.last_gps_captured_at juga di-update ke value ini)
+    @Json(name = "captured_at") val capturedAt: String,
+    // Jarak dalam METER dari GPS previous last_known snapshot (integer, 0 jika first upload ever)
+    @Json(name = "distance_from_last_known_meters") val distanceFromLastKnownMeters: Int,
+    // Jumlah zona geofence yang trigger ENTER / EXIT event pada upload ini (0 = tidak ada state change)
+    @Json(name = "geofence_events_triggered_count") val geofenceEventsTriggeredCount: Int,
+    // True jika titik GPS saat ini berada DI DALAM minimal 1 zona aktif user milik anak
+    @Json(name = "is_inside_any_active_zone") val isInsideAnyActiveZone: Boolean,
+    // Waktu server menerima request (UTC ISO, untuk debug latency)
+    @Json(name = "updated_at") val updatedAt: String
+)
+
+// ============================================================
+// DTO Geofence Zona (GF1 GET /geofence?user_id=X) — List ZonaGeofenceObject[]
+// 1:1 mapping field fillable model ZonaGeofence.php backend L18-L32.
+// Dipakai oleh GeofenceManager untuk konversi ke Geofence object Play Services.
+// ============================================================
+@JsonClass(generateAdapter = true)
+data class ZonaGeofenceDto(
+    @Json(name = "id") val id: Int,
+    @Json(name = "user_id") val userId: Int,
+    @Json(name = "name") val name: String,
+    // kategori zona: safe / danger / warning / school / home (untuk warna / icon UI)
+    @Json(name = "category") val category: String? = null,
+    @Json(name = "address") val address: String? = null,
+    // Koordinat pusat zona (WGS84 decimal 7 digit presisi)
+    @Json(name = "latitude") val latitude: Double,
+    @Json(name = "longitude") val longitude: Double,
+    // Radius zona dalam METER (int, minimal 10 meter).
+    @Json(name = "radius_meters") val radiusMeters: Int,
+    // Array ID ProfilAnak yang di-assign ke zona ini (JSON array: ["12", "14"] → string ID anak)
+    @Json(name = "assigned_children") val assignedChildren: List<String>? = null,
+    // True jika harus kirim notifikasi saat perangkat MASUK zona
+    @Json(name = "notify_on_enter") val notifyOnEnter: Boolean? = true,
+    // True jika harus kirim notifikasi saat perangkat KELUAR zona
+    @Json(name = "notify_on_exit") val notifyOnExit: Boolean? = true,
+    // Status zona: "active" / "inactive" — GeofenceManager HANYA add yang status=active.
+    @Json(name = "status") val status: String? = "active",
+    // Warna hex untuk marker UI (misal "#22c55e" safe zone)
+    @Json(name = "color") val color: String? = null,
+    // ISO datetime terakhir zona ini trigger event (bisa null jika belum pernah)
+    @Json(name = "last_triggered") val lastTriggered: String? = null,
+    @Json(name = "created_at") val createdAt: String? = null,
+    @Json(name = "updated_at") val updatedAt: String? = null
+)

@@ -11,6 +11,12 @@
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" tools:ignore="ProtectedPermissions" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- (G3.9) Permission untuk GPS tracking background (SDK 29+ Android 10+) → user harus pilih "Allow all the time" -->
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+    <!-- Permission agar GPS worker restart otomatis setelah HP di-reboot (nanti BOOT_COMPLETED Receiver) -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- Permission untuk cek status koneksi sebelum upload GPS (optional monitoring) -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
     <application
         android:allowBackup="true"
@@ -31,6 +37,12 @@
                 <action android:name="com.google.firebase.MESSAGING_EVENT" />
             </intent-filter>
         </service>
+        <!-- (G3.9) BroadcastReceiver untuk menangkap Geofence ENTER/EXIT event dari Play Services GeofencingClient. -->
+        <!-- exported=false = HANYA bisa menerima intent dari internal app ini (tidak bisa di-trigger app lain = security). -->
+        <!-- Pakai FQN wajib com.example.data.location.* (manifest namespace != actual source package). -->
+        <receiver
+            android:name="com.example.data.location.GeofenceEventReceiver"
+            android:exported="false" />
         <activity
             android:name="com.example.MainActivity"
             android:exported="true"

@@ -11,10 +11,12 @@ import com.example.data.remote.ApiResponse
 import com.example.data.remote.ChatListResponseDto
 import com.example.data.remote.ChatSendResponseDto
 import com.example.data.remote.FcmTokenResponseDto
+import com.example.data.remote.GpsUploadResponseDto
 import com.example.data.remote.LitensiApiClient
 import com.example.data.remote.LitensiApiService
 import com.example.data.remote.ProfilAnakDto
 import com.example.data.remote.TelemetryResponseDto
+import com.example.data.remote.ZonaGeofenceDto
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
 import kotlinx.coroutines.flow.Flow
@@ -363,6 +365,81 @@ class LitensiRepository(
             )
         }
         if (!resp.success) error(resp.message ?: "Gagal update FCM token perangkat anak.")
+        return resp.data
+    }
+
+    // =========================================================================
+    // MODUL GEOFENCE (G3.8 / GF1) — Ambil list semua zona geofence user ID Orang Tua
+    // =========================================================================
+    // Dipanggil oleh GeofenceManager saat pairing baru → untuk add semua zona aktif ke Play Services GeofencingClient.
+    // Validasi pertahanan: userId WAJIB positive integer (minimal 1).
+    suspend fun getGeofenceList(userIdOrtu: Int): List<ZonaGeofenceDto> {
+        require(userIdOrtu > 0) { "getGeofenceList: userIdOrtu harus > 0 (nilai dikirim=$userIdOrtu)." }
+        val resp = apiCall {
+            apiService.getGeofenceList(userId = userIdOrtu)
+        }
+        if (!resp.success) error(resp.message ?: "Gagal get list zona geofence user=$userIdOrtu.")
+        return resp.data
+    }
+
+    // =========================================================================
+    // MODUL GPS (G3.5 / AN10) — Upload satu point GPS pergerakan ke backend
+    // =========================================================================
+    // Dipanggil oleh: GPSUploadWorker.doWork() saat flush batch 10 point Room pending.
+    // Gate kepemilikan: EXACT COPY pattern F3 updateFcmTokenAnak (L352). Minimal salah satu pin/qr non empty.
+    // Validasi pertahanan (defensive) di level repository: lat/lng range WGS84 & capturedAt tidak kosong.
+    suspend fun uploadGpsPergerakan(
+        anakId: Int,
+        pairingPin: String?,
+        qrPairingCode: String?,
+        latitude: Double,
+        longitude: Double,
+        capturedAtIso: String,
+        accuracyMeters: Int? = null,
+        batteryLevel: Int? = null,
+        speedKmh: Double? = null,
+        altitudeMeters: Double? = null,
+        isMockDetected: Boolean? = null
+    ): GpsUploadResponseDto {
+        // (1) Gate kepemilikan: minimal salah satu PIN atau QR pairing code NON EMPTY dan value benar di server-side validate.
+        require(!pairingPin.isNullOrBlank() || !qrPairingCode.isNullOrBlank()) {
+            "Gate kepemilikan GPS: pairingPin atau qrPairingCode wajib disertakan (minimal salah satu)."
+        }
+        // (2) Validasi range latitude/longitude (WGS84 standard) agar tidak mengirim data corrupt ke backend.
+        require(latitude in -90.0..90.0) {
+            "Latitude GPS harus antara -90 s/d 90 derajat (nilai dikirim=$latitude)."
+        }
+        require(longitude in -180.0..180.0) {
+            "Longitude GPS harus antara -180 s/d 180 derajat (nilai dikirim=$longitude)."
+        }
+        // (3) capturedAt WAJIB ada (waktu dari HP, bukan server) untuk snapshot ProfilAnak.last_gps_captured_at.
+        require(capturedAtIso.isNotBlank()) {
+            "capturedAt ISO 8601 waktu HP tidak boleh kosong (wajib kirim waktu capture GPS asli perangkat)."
+        }
+        // (4) Validasi tambahan: battery 0-100, accuracy >=0 (jika dikirim)
+        if (batteryLevel != null) require(batteryLevel in 0..100) {
+            "Battery level harus antara 0-100 (nilai=$batteryLevel)."
+        }
+        if (accuracyMeters != null) require(accuracyMeters >= 0) {
+            "Accuracy GPS tidak boleh negatif (nilai=$accuracyMeters)."
+        }
+
+        val resp = apiCall {
+            apiService.uploadGpsPergerakan(
+                id = anakId,
+                pairingPin = pairingPin,
+                qrPairingCode = qrPairingCode,
+                latitude = latitude,
+                longitude = longitude,
+                capturedAtIso = capturedAtIso,
+                accuracyMeters = accuracyMeters,
+                batteryLevel = batteryLevel,
+                speedKmh = speedKmh,
+                altitudeMeters = altitudeMeters,
+                isMockDetected = isMockDetected
+            )
+        }
+        if (!resp.success) error(resp.message ?: "Gagal upload data GPS pergerakan anak.")
         return resp.data
     }
 }
