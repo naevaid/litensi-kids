@@ -21,6 +21,23 @@ object LitensiApiClient {
     // Instance singleton LitensiApiService (lazy, dibuat saat pertama diakses)
     val instance: LitensiApiService by lazy { buildApiService() }
 
+    // (G10.1 HOTFIX PALING PENTING: Inject Accept JSON GLOBAL di SEMUA request Retrofit)
+    // Root cause HTTP 302 redirect ke SPA sebelumnya: Android TIDAK KIRIM header Accept: application/json
+    // → Laravel $request->wantsJson()=FALSE → JIKA validasi/gate GAGAL → Laravel redirect()->back()
+    // → tanpa Referer → redirect ke ROOT / → OkHttp follow redirect → dapat HTML SPA → Moshi error.
+    // DENGAN interceptor ini di bawah: wantsJson()=TRUE SELALU → validation gate fail = JSON 422/403.
+    private class ForceAcceptJsonInterceptor : Interceptor {
+        override fun intercept(chain: Interceptor.Chain): Response {
+            val original = chain.request()
+            val requestWithHeaders = original.newBuilder()
+                .header("Accept", "application/json")
+                .header("X-Requested-With", "XMLHttpRequest")
+                // Jangan override Content-Type kalau sudah ada (form-urlencoded / multipart)
+                .build()
+            return chain.proceed(requestWithHeaders)
+        }
+    }
+
     // (G9.1 HOTFIX) Interceptor untuk mendeteksi JIKA server mengembalikan HTML (fallback SPA Vite)
     // bukan JSON API — berarti route tidak match / di-redirect Nginx karena route GPS belum terdaftar
     // production VPS. Lempar IOException dengan pesan JELAS, bukan "malformed JSON" yang membingungkan.
@@ -34,18 +51,17 @@ object LitensiApiClient {
                 val url = request.url.toString()
                 val method = request.method
                 val bodySnapshot =
-                    try { response.peekBody(256L).string().trim().replace("\n", " ") }
+                    try { response.peekBody(512L).string().trim().replace("\n", " ") }
                     catch (_: Exception) { "(tidak bisa baca body)" }
+                // HTTP 302 redirect to / Laravel page: BERARTI gate ownership ATAU validasi gagal
+                // TAPI Accept JSON interceptor SEHARUSNYA sudah mencegah ini. Muncul pesan tambahan.
                 val msg = """
                     ❌ SERVER MENGEMBALIKAN HTML SPA BUKAN JSON API.
                     Request: $method $url
                     Content-Type server: $contentType
-                    Ini BERARTI route API BELUM TERDAFTAR di production VPS atau Nginx salah redirect
-                    ke frontend Vite (index.html fallback SPA).
-                    SOLUSI: Jalankan di SSH VPS: cd /var/www/litensi-backend && /usr/bin/php8.5 artisan route:list
-                    → CEK ADAKAH BARIS: POST api/v1/anak/{id}/gps .... AnakController@uploadGpsPergerakan
-                    JIKA TIDAK ADA: rsync folder routes terbaru + /usr/bin/php8.5 artisan route:clear lalu retry.
-                    Body preview HTML: $bodySnapshot
+                    SOLUSI: Jalankan di SSH VPS dengan tambahan header Accept JSON untuk lihat error ASLI:
+                    curl -v -X POST '$url' -H 'Accept: application/json' -d 'pairing_pin=PIN_ANDA&latitude=-6.814&longitude=110.821&captured_at=2026-09-19T00:00:00Z'
+                    Body preview: $bodySnapshot
                 """.trimIndent()
                 throw IOException(msg)
             }
@@ -54,7 +70,11 @@ object LitensiApiClient {
     }
 
     private fun buildApiService(): LitensiApiService {
-        // === OkHttpClient + logging interceptor + HTML fallback detector (urutan interceptor PENTING) ===
+        // === OkHttpClient + 3 interceptor (URUTAN SANGAT PENTING JANGAN DIBALIK!) ===
+        // URUTAN INTERCEPTOR:
+        // 1. ForceAcceptJson (APPEND header Accept JSON GLOBAL sebelum request keluar)
+        // 2. HttpLoggingInterceptor (LOG request/response SUDAH DENGAN header Accept JSON)
+        // 3. HtmlFallbackDetectionInterceptor (CHECK response content type)
         val logging = HttpLoggingInterceptor().apply {
             level = if (BuildConfig.DEBUG) {
                 HttpLoggingInterceptor.Level.BODY
@@ -67,9 +87,11 @@ object LitensiApiClient {
             .connectTimeout(TIMEOUT_DETIK, TimeUnit.SECONDS)
             .readTimeout(TIMEOUT_DETIK, TimeUnit.SECONDS)
             .writeTimeout(TIMEOUT_DETIK, TimeUnit.SECONDS)
-            // (G9.1) Urutan INTERCEPTOR: logging dulu agar body tercatat, KEMUDIAN fallback detector
-            // yang akan lempar exception JIKA HTML. Pesan error akan masuk ke GPSUploadWorker Log.w
+            // (G10.1) URUTAN: Accept JSON HEADER INTERCEPTOR PALING AWAL DARI SEMUA!
+            .addInterceptor(ForceAcceptJsonInterceptor())
+            // (G9.1) Kemudian logging (agar header Accept JSON tercatat di logcat okhttp BODY)
             .addInterceptor(logging)
+            // Terakhir detector HTML fallback
             .addInterceptor(HtmlFallbackDetectionInterceptor())
             .build()
 

@@ -436,7 +436,12 @@ class LitensiRepository(
                 batteryLevel = batteryLevel,
                 speedKmh = speedKmh,
                 altitudeMeters = altitudeMeters,
-                isMockDetected = isMockDetected
+                // (G10.1) Konversi Boolean? → Int? 0/1:
+                // Retrofit @Field Boolean di-encode ke literal string "true"/"false" lowercase,
+                // yang DITOLAK oleh Laravel boolean validation rule PHP 8.5 strict (422 error
+                // menyebabkan redirect 302 ke SPA HTML JIKA Accept JSON header tidak dikirim).
+                // Kirim Int? 0/1 → di-encode ke string "0"/"1" yang SELALU lolos validasi boolean.
+                isMockDetected = if (isMockDetected == null) null else if (isMockDetected) 1 else 0
             )
         }
         if (!resp.success) error(resp.message ?: "Gagal upload data GPS pergerakan anak.")

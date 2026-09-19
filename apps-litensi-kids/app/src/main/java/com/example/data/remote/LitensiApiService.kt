@@ -89,6 +89,7 @@ interface LitensiApiService {
     // Gate kepemilikan: EXACT COPY AN8/AN9 pattern. Minimal salah satu pairing_pin ATAU qr_pairing_code NON EMPTY & value COCOK DB row ProfilAnak target ID.
     // KEDUA KOSONG → backend return 403 gate kepemilikan gagal. Salah SATU dikirim TIDAK cocok value → 403.
     // captured_at WAJIB ISO 8601 WAKTU HP (bukan server!) — akan dijadikan snapshot ProfilAnak.last_gps_captured_at di backend.
+    // (G10.1) is_mock_detected: Int? 0/1 BUKAN Boolean literal → literal "true"/"false" dari @Field Boolean DITOLAK Laravel boolean validation PHP 8.5 strict → kirim 0/1 selalu lolos.
     @FormUrlEncoded
     @POST("api/v1/anak/{id}/gps")
     suspend fun uploadGpsPergerakan(
@@ -105,7 +106,8 @@ interface LitensiApiService {
         @Field("battery_level") batteryLevel: Int? = null,
         @Field("speed_kmh") speedKmh: Double? = null,
         @Field("altitude_m") altitudeMeters: Double? = null,
-        @Field("is_mock_detected") isMockDetected: Boolean? = null
+        // G10.1: Int? 0/1 — JANGAN GANTI ke Boolean, akan di-encode jadi string 0/1 yang SELALU lolos Laravel validasi.
+        @Field("is_mock_detected") isMockDetected: Int? = null
     ): ApiResponse<GpsUploadResponseDto>
 
     // (G3.8 / GF1) — GET list semua zona geofence milik user_id tertentu (ID Orang Tua).

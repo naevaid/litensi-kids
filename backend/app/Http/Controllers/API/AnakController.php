@@ -567,8 +567,29 @@ class AnakController extends Controller
             'battery_level' => 'nullable|integer|between:0,100',
             'speed_kmh' => 'nullable|numeric|min:0',
             'altitude_m' => 'nullable|numeric',
-            'is_mock_detected' => 'nullable|boolean',
+            // (G10.1 HOTFIX) JANGAN gunakan rule 'boolean' bawaan Laravel PHP 8.5:
+            // rule boolean strict menolak literal string "true"/"false" dari Retrofit @Field Boolean
+            // (yang di-encode okhttp jadi query string lowercase). Solusi: nullable SAJA di validasi,
+            // KEMUDIAN manual cast di PHP right after validated() (di bawah).
+            'is_mock_detected' => 'nullable',
         ]);
+
+        // (G10.1) Manual cast is_mock_detected ke boolean: support semua format
+        // (1/0, "1"/"0", "true"/"false" case-insensitive, on/off, yes/no, actual bool)
+        // Hindari ValidationException boolean rule PHP 8.5 strict terhadap literal string.
+        if (isset($validated['is_mock_detected']) && !is_bool($validated['is_mock_detected'])) {
+            $val = strtolower(trim((string) $validated['is_mock_detected']));
+            $trueVals = ['1', 'true', 'on', 'yes', 'y'];
+            $falseVals = ['0', 'false', 'off', 'no', 'n', '', 'null'];
+            if (in_array($val, $trueVals, true)) {
+                $validated['is_mock_detected'] = true;
+            } elseif (in_array($val, $falseVals, true)) {
+                $validated['is_mock_detected'] = false;
+            } else {
+                // Fallback unknown string value → null agar tidak masuk boolean field DB error
+                $validated['is_mock_detected'] = null;
+            }
+        }
 
         // Gate kepemilikan: jika salah satu dikirim, WAJIB cocok dengan row
         if (!empty($validated['qr_pairing_code']) && $validated['qr_pairing_code'] !== $anak->qr_pairing_code) {
