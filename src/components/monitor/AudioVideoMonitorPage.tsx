@@ -402,11 +402,73 @@ export const AudioVideoMonitorPage: React.FC<AudioVideoMonitorPageProps> = ({ sh
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedChildId, forceLiveUntilMs]); // Re-init seluruh poll ketika forceLiveUntilMs SET/berubah atau ganti anak.
 
-  // (G5.3) Handler button Live Update → set forceLiveUntilMs = 30 detik dari sekarang
-  const handleForceLiveUpdate = () => {
-    const next = Date.now() + 30_000;
-    setForceLiveUntilMs(next);
-    showToast('🚀 Mode Live GPS Aktif! 30 detik polling maps tiap 5 detik realtime!', 'success');
+  // (G5.3) Handler button Live Update → 2 TAHAPAN:
+  // ---------------------------------------------------------------------------
+  // (STEP 1) CALL BACKEND /monitor/gps/request-fast-mode (AV6) untuk MENGIRIM FCM
+  //          PUSH DATA PAYLOAD ke HP Anak → GPSLocationManager singleton masuk MODE
+  //          FAST interval 5 detik selama 30 menit (TEMPORER realtime, PATUH
+  //          batas WorkManager 15 menit karena bukan periodic permanent).
+  // (STEP 2) HANYA JIKA FCM push SUKSES → set forceLiveUntilMs 30 detik polling maps
+  //          frontend agar user ORANG TUA mendapatkan update realtime 5 detik juga.
+  // ---------------------------------------------------------------------------
+  // IDE CERDAS USER (ZERO HARDCODE / TIDAK MELANGGAR Google Policy): Daripada
+  //   memaksa Periodic WorkManager <15 menit yang akan di-throttle oleh Play Protect
+  //   dan menghabiskan baterai permanen 30%+/hari → LEBIH BAIK gunakan FCM push
+  //   temporer saat user BENAR-BENAR sedang memantau (klik tombol). Setelah durasi
+  //   expire, GPS manager revert otomatis hemat baterai adaptive normal.
+  const handleForceLiveUpdate = async () => {
+    const anakId = Number(selectedChildId);
+    const active = activeChild;
+    if (!anakId || !active?.id) {
+      showToast('⚠️ Pilih perangkat anak terlebih dahulu sebelum aktifkan Mode Live GPS!', 'warning');
+      return;
+    }
+
+    try {
+      showToast(`📤 Mengirim perintah Live GPS ke ${active.name}...`, 'info');
+      const res = await api.post(
+        '/monitor/gps/request-fast-mode',
+        {
+          profil_anak_id: anakId,
+          duration_minutes: 30,
+          interval_ms: 5_000,
+        },
+        { authRequired: true },
+      );
+      if (!res.ok || !res.data?.fcm_sent) {
+        const errMsg = res?.message || 'Gagal kirim perintah Live GPS ke perangkat anak.';
+        const anakName = res.data?.anak_name || active.name;
+
+        if (res.httpStatus === 409 || /FCM token.*BELUM TERDAFTAR|token.*tidak/i.test(errMsg)) {
+          showToast(
+            `🚫 ${anakName} belum terhubung FCM! ${errMsg}`,
+            'warning',
+          );
+          // Meskipun token kosong, TETAP set polling frontend 30 detik supaya
+          // user tetap dapat melihat update jika GPSWorker periodic 15 menit jalan.
+          setForceLiveUntilMs(Date.now() + 30_000);
+          showToast('✅ Mode polling Maps frontend tetap aktif 30 detik.', 'info');
+          return;
+        }
+
+        showToast(`❌ ${errMsg}`, 'error');
+        return;
+      }
+
+      // SUCCESS ✅: FCM push terkirim → Set polling 30 detik + Notifikasi jelas user.
+      const durasi = res.data.duration_minutes ?? 30;
+      const interval = res.data.interval_ms ?? 5_000;
+      setForceLiveUntilMs(Date.now() + durasi * 60 * 1000);
+      showToast(
+        `✅ Live GPS AKTIF! Perintah terkirim ke ${res.data.anak_name || active.name}: ` +
+        `${durasi} menit latensi ${interval}ms (realtime kayak Waze!). Perangkat anak akan mengupload GPS tiap ${interval/1000} detik tanpa menunggu 15 menit worker.`,
+        'success',
+      );
+    } catch (err: any) {
+      const msg = err?.message || 'Kesalahan jaringan saat kirim perintah Live GPS';
+      showToast(`❌ ${msg}. Coba periksa koneksi internet lalu klik lagi tombolnya.`, 'error');
+      console.error('[AudioMonitor-LiveGPS] Exception:', err);
+    }
   };
 
   // Cleanup unmount: Jika ada sesi aktif yang belum di-stop, auto stop paksa (hindari sesi menggantung)

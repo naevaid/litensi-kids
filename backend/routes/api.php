@@ -71,6 +71,8 @@ Route::prefix('v1')->group(function () {
         Route::post('/kuota/tambah-kuota-manual', [MonitorAVController::class, 'tambahKuotaManual']);
         // AV5 — Riwayat sesi streaming (History Monitor)
         Route::get('/riwayat-sesi', [MonitorAVController::class, 'riwayatSesi']);
+        // AV6 — Trigger Mode Live GPS ke Perangkat Anak (realtime 5-10 detik selama duration_minutes, TEMPORER tidak melanggar batas WorkManager 15 menit)
+        Route::post('/gps/request-fast-mode', [MonitorAVController::class, 'requestFastGpsMode']);
     });
 
     // === Modul Kontrol Aplikasi (Aturan + Jadwal + Permintaan Akses) ===

@@ -16,6 +16,7 @@ import com.example.MainActivity
 import com.parental.litensikids.R
 import com.example.data.local.LitensiKidsDatabase
 import com.example.data.location.GeofenceManager
+import com.example.data.location.GPSLocationManager
 import com.example.data.repository.LitensiRepository
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
@@ -314,6 +315,38 @@ class LitensiFirebaseMessagingService : FirebaseMessagingService() {
                             Log.i(TAG, "FCM sync (P1 ✅): Chat list anak=$anakId refresh sukses 50 rows terbaru CH2 endpoint.")
                         }.onFailure { err ->
                             Log.e(TAG, "FCM sync Chat GAGAL (non-fatal, coba saat buka app): ${err.message}", err)
+                        }
+                    }
+
+                    // ------------------------------------------------------------------
+                    // SYNC HANDLER 4 (LIVE GPS 30D TRIGGER)
+                    //   → trigger: event_type=request_gps_fast (dari tombol "Live GPS 30D"
+                    //     halaman /monitor web parental.naeva.id).
+                    //   Action: Panggil GPSLocationManager.forceFastMode() singleton yang
+                    //   akan: (1) Simpan FORCE_FAST_UNTIL_MS & FORCE_FAST_INTERVAL_MS ke
+                    //   SharedPrefs, (2) restart FusedLocationProviderClient request dengan
+                    //   interval 5 detik custom, (3) Trigger ONE-SHOT upload GPS EXPEDITED
+                    //   pertama agar user orang tua melihat marker update INSTAN.
+                    // ------------------------------------------------------------------
+                    // (ATURAN CERDAS DARI USER — JANGAN MELANGGAR BATAS 15 MENIT WORKMANAGER!)
+                    //   Tidak usah ubah PeriodicWorkManager < 15 menit (dibatalkan Google Play
+                    //   Protect Policy). LEBIH BAIK: GUNAKAN FCM push untuk TEMPORER masuk
+                    //   mode realtime selama user BENAR-BENAR sedang memantau anak. Setelah
+                    //   duration expire (30 menit), otomatis balik ke adaptive hemat baterai.
+                    if (eventType == "request_gps_fast") {
+                        runCatching {
+                            val durationStr = data["duration_minutes"]?.toString()?.ifBlank { null } ?: "30"
+                            val intervalStr = data["interval_ms"]?.toString()?.ifBlank { null } ?: "5000"
+                            val durasiMenit = (durationStr.toIntOrNull() ?: 30).coerceIn(1, 240)
+                            val intervalMs = (intervalStr.toLongOrNull() ?: 5_000L).coerceIn(1_000L, 60_000L)
+                            GPSLocationManager.forceFastMode(
+                                ctx = ctx,
+                                durationMinutes = durasiMenit,
+                                intervalMs = intervalMs,
+                            )
+                            Log.i(TAG, "FCM sync [LIVE GPS FORCE MODE ✅]: Aktif selama ${durasiMenit}menit interval=${intervalMs}ms (realtime kayak Waze). Expire auto revert normal.")
+                        }.onFailure { err ->
+                            Log.e(TAG, "FCM sync LIVE GPS FORCE MODE GAGAL (non-fatal): ${err.message}", err)
                         }
                     }
 

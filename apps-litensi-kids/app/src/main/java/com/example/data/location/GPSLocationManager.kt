@@ -74,6 +74,19 @@ object GPSLocationManager {
     // Speed > 20 km/jam → expedited upload SETIAP point (mobil kecepatan tinggi, jarak 30s = ~200m).
     private const val SPEED_EMERGENCY_UPLOAD_KMH: Double = 20.0
 
+    // ============================================================
+    // CONFIG FORCE_FAST_MODE (TEMPORER via FCM push dari dashboard Orang Tua)
+    // Dipakai oleh tombol "Live GPS 30D" di halaman /monitor web.
+    // DURASI = 30 menit default. INTERVAL = 5 detik (seperti Waze / Google Maps realtime).
+    // ============================================================
+    // Solusi PATUH ATURAN GOOGLE (bukan melanggar batas 15 menit Periodic WorkManager):
+    // - Jangan ubah PeriodicWorkManager < 15 menit (risiko di-throttle Play Protect + boros baterai permanen).
+    // - LEBIH CERDAS: TEMPORER force masuk FAST MODE via FCM push trigger saat user BENAR-BENAR
+    //   sedang memantau (klik tombol). Setelah expire, revert otomatis ke adaptive normal hemat baterai.
+    private const val PREFS_NAME = "litensi_gps_location_prefs"
+    private const val KEY_FORCE_FAST_UNTIL_MS = "force_fast_until_ms" // Long: System time millisecond saat mode expire
+    private const val KEY_FORCE_FAST_INTERVAL_MS = "force_fast_interval_ms" // Long: Interval yang diinginkan user (default 5000ms)
+
     // Track last mode (STATIONARY / FAST) & last ProfilAnakId untuk adaptive switch.
     enum class GpsMode { STATIONARY, FAST }
     private var currentMode: GpsMode = GpsMode.STATIONARY
@@ -102,7 +115,34 @@ object GPSLocationManager {
     private val ioScope: CoroutineScope = CoroutineScope(Dispatchers.IO + supervisorJob)
 
     // (G5 Helper) Build LocationRequest sesuai MODE saat ini.
-    private fun buildLocationRequestFor(mode: GpsMode): LocationRequest {
+    // UPDATE AV6: JIKA SharedPrefs FORCE_FAST_UNTIL_MS > waktu sekarang → PAKAI CUSTOM INTERVAL
+    //   (abaikan normal STATIONARY/FAST mode — user dari dashboard web minta realtime tracking temporer).
+    private fun buildLocationRequestFor(mode: GpsMode, ctx: Context? = null): LocationRequest {
+        // ========== [AV6 LIVE GPS PUSH TRIGGER] ==========
+        val now = System.currentTimeMillis()
+        val ctxPrefs = ctx ?: appContext
+        val (forceActive, forceIntervalMs) = if (ctxPrefs != null) {
+            val prefs = ctxPrefs.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val until = prefs.getLong(KEY_FORCE_FAST_UNTIL_MS, 0L)
+            val interval = prefs.getLong(KEY_FORCE_FAST_INTERVAL_MS, 5_000L)
+            (until > now) to interval
+        } else {
+            false to 5_000L
+        }
+        if (forceActive) {
+            Log.i(TAG, "[LIVE GPS FORCE MODE] Aktif! Custom interval ${forceIntervalMs}ms (realtime 5 detik kayak Waze).")
+            // Fastest = forceIntervalMs / 2 agar cepat capture tapi tidak banjir point.
+            val fastest = (forceIntervalMs / 2L).coerceAtLeast(1000L)
+            return LocationRequest.Builder(
+                Priority.PRIORITY_HIGH_ACCURACY,
+                forceIntervalMs
+            ).apply {
+                setMinUpdateIntervalMillis(fastest)
+                setMinUpdateDistanceMeters(0f) // 0m = user request update apapun jaraknya.
+                setWaitForAccurateLocation(true)
+            }.build()
+        }
+        // ========== [NORMAL ADAPTIVE MODE] ==========
         return when (mode) {
             GpsMode.STATIONARY -> LocationRequest.Builder(
                 Priority.PRIORITY_HIGH_ACCURACY,
@@ -222,7 +262,7 @@ object GPSLocationManager {
         }
 
         // 3. Build LocationRequest AWAL → MODE_STATIONARY default.
-        val initialRequest = buildLocationRequestFor(currentMode)
+        val initialRequest = buildLocationRequestFor(currentMode, ctx)
 
         // 4. Build LocationCallback → handle setiap lokasi terbaru + ADAPTIVE SWITCH MODE + AUTO EXPEDITED UPLOAD.
         val callback = object : LocationCallback() {
@@ -355,6 +395,62 @@ object GPSLocationManager {
         // Re-create baru SupervisorJob + scope agar jika user pair ulang tanpa kill app → ioScope masih active.
         runCatching { supervisorJob.cancel() }
         supervisorJob = SupervisorJob()
+    }
+
+    // ============================================================
+    // [AV6 LIVE GPS 30D] PUBLIC API FOR FCM HANDLER!
+    // Dipanggil dari LitensiFirebaseMessagingService saat menerima push data payload event_type=request_gps_fast.
+    // ============================================================
+    /**
+     * Force mode GPS RealTime temporer selama [durationMinutes] menit dengan interval [intervalMs] millisecond.
+     * Setelah duration expire otomatis kembali ke MODE normal adaptive (STATIONARY diam / FAST bergerak).
+     * TIDAK MELANGGAR batas 15 menit Periodic WorkManager karena ini LocationRequest satu-satunya bukan
+     * WorkManager periodic yang dicek Play Protect Policy! Aman.
+     */
+    fun forceFastMode(
+        ctx: Context,
+        durationMinutes: Int = 30,
+        intervalMs: Long = 5_000L,
+    ) {
+        require(durationMinutes in 1..240) { "durationMinutes harus 1 s/d 240 menit (maks 4 jam, hindari boros baterai permanen)" }
+        require(intervalMs in 1_000L..60_000L) { "intervalMs harus 1000 s/d 60000 (1 detik s/d 1 menit)" }
+
+        val durasiMs = durationMinutes.toLong() * 60L * 1000L
+        val untilMs = System.currentTimeMillis() + durasiMs
+
+        // Step 1: Simpan ke SharedPrefs (buildLocationRequestFor akan check setiap di build,
+        // juga ketika app restart / GPSLocationManager requestLocationUpdates dipanggil ulang).
+        val prefs = ctx.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit()
+            .putLong(KEY_FORCE_FAST_UNTIL_MS, untilMs)
+            .putLong(KEY_FORCE_FAST_INTERVAL_MS, intervalMs)
+            .apply()
+        Log.i(TAG, "[LIVE GPS FORCE MODE] SAVED PREFS until=${untilMs} (${durationMinutes} menit), interval=${intervalMs}ms.")
+
+        // Step 2: REAL-TIME EFFECT → Force rebuild LocationRequest sekarang juga tanpa menunggu adaptive switch.
+        //   Kalau ada fusedLocationClient & callback → remove request saat ini lalu re-create dengan force mode baru.
+        val client = fusedLocationClient
+        val callback = locationCallback
+        val appCtx = ctx.applicationContext
+        appContext = appCtx // Pastikan appContext terisi untuk buildLocationRequestFor yang membutuhkan SharedPrefs.
+        if (client != null && callback != null) {
+            runCatching { client.removeLocationUpdates(callback) }
+            val forceRequest = buildLocationRequestFor(currentMode, appCtx)
+            runCatching {
+                client.requestLocationUpdates(forceRequest, callback, appCtx.mainLooper)
+            }.onSuccess {
+                Log.i(TAG, "[LIVE GPS FORCE MODE] ✅ LocationRequest RESTARTED dengan interval=${intervalMs}ms selama ${durationMinutes} menit. Realtime seperti Waze/Google Maps!")
+            }.onFailure { err ->
+                Log.e(TAG, "[LIVE GPS FORCE MODE] ❌ restart requestLocationUpdates FAIL: ${err.message}")
+            }
+
+            // Trigger ONE-SHOT upload GPS segera EXPEDITED supaya user ORANG TUA tidak perlu menunggu 5 detik
+            // pertama untuk melihat marker update di dashboard web (UX instant feedback).
+            runCatching { GPSUploadWorker.enqueueExpeditedOneTime(appCtx) }
+                .onFailure { err -> Log.w(TAG, "[LIVE GPS] enqueueExpeditedOneShot gagal (initial upload): ${err.message}") }
+        } else {
+            Log.w(TAG, "[LIVE GPS FORCE MODE] PREFS tersimpan tapi client/callback BELUM ADA (GPS belum start?). Akan ter-apply otomatis ketika user membuka app / nanti requestLocationUpdates jalan.")
+        }
     }
 
     // Hitung battery level integer 0-100 via BatteryManager (sama pattern LitensiTelemetryWorker L77).

@@ -8,6 +8,7 @@ use App\Models\PaketLangganan;
 use App\Models\ProfilAnak;
 use App\Models\SesiStreamAvMonitor;
 use App\Models\User;
+use App\Services\FcmPushService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -15,6 +16,10 @@ use Illuminate\Support\Facades\DB;
 
 class MonitorAVController extends Controller
 {
+    public function __construct(
+        protected readonly FcmPushService $fcm,
+    ) {}
+
     // Helper ZERO HARDCODE NO FALLBACK DEFAULT user_id=1 — JUJUR return empty / 404 jika null!
     private function getSafeUserId(Request $request): ?int
     {
@@ -212,6 +217,111 @@ class MonitorAVController extends Controller
         $persen = ($totalDigunakanMenit / $batasMenit) * 100;
         if ($persen >= 80) return 'hampir_habis';
         return 'normal';
+    }
+
+    /**
+     * AV6 — POST /monitor/gps/request-fast-mode
+     * TRIGGER MODE LIVE GPS REALTIME ke HP Perangkat Anak VIA FCM DATA PAYLOAD (bukan cuma polling browser!).
+     * ---------------------------------------------------------------------------------------------------
+     * IDE CERDAS USER: JANGAN MELANGGAR batas WorkManager Periodic 15 menit hard limit Google policy.
+     *   SOLUSI: TEMPORER Force FAST MODE selama 30 menit via FCM push trigger langsung ke
+     *   GPSLocationManager singleton → set interval request 5-10 DETIK SAJA (seperti Waze / Maps navigasi).
+     *   Setelah duration_minutes expire, otomatis revert ke adaptive normal hemat baterai.
+     * Gate kepemilikan: ProfilAnak target WAJIB milik user_id login saat ini (tidak bisa user lain command
+     *   GPS realtime anak orang). Zero hardcode — jika HP Anak fcm_token null = jujur return 409 error
+     *   dengan message yang jelas untuk UI tampilkan toast "HP Anak belum aktif / tidak ada koneksi FCM".
+     */
+    public function requestFastGpsMode(Request $request): JsonResponse
+    {
+        $userId = $this->getSafeUserId($request);
+        if ($userId === null) {
+            return response()->json([
+                'success' => false,
+                'message' => 'user_id tidak valid (ZERO HARDCODE — tidak ada default user).',
+                'fcm_sent' => false,
+            ], 400);
+        }
+
+        $valid = $request->validate([
+            'profil_anak_id' => 'required|exists:profil_anak,id',
+            // TEMPORER duration: 1..240 menit (maks 4 jam, hindarkan permanent boros baterai tanpa disadari user)
+            'duration_minutes' => 'sometimes|integer|min:1|max:240',
+            // Interval 1000ms (1s) s/d 60000ms (1m). Default 5000 (5 detik) = realtime smooth Waze-like.
+            'interval_ms' => 'sometimes|integer|min:1000|max:60000',
+        ]);
+
+        // === GATE OWNERSHIP: Pastikan anak MILIK user ini ===
+        $anak = ProfilAnak::where('id', (int)$valid['profil_anak_id'])
+            ->whereHas('user', fn($q) => $q->where('id', $userId))
+            ->select(['id', 'name', 'fcm_token', 'device_name', 'is_online'])
+            ->first();
+        if (!$anak) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Profil Anak tidak ditemukan atau bukan milik user ini.',
+                'fcm_sent' => false,
+            ], 404);
+        }
+
+        // Zero hardcode: TIDAK BOLEH asumsi token ada. Jikalau fcm_token NULL / empty
+        // = HP Anak belum pernah force get token / sedang offline total. JUJUR LAPOR ke UI!
+        if (empty(trim((string)$anak->fcm_token))) {
+            return response()->json([
+                'success' => false,
+                'message' => 'FCM token perangkat anak BELUM TERDAFTAR. Coba hidupkan HP anak, buka aplikasi Litensi Kids, dan tunggu 10 detik agar token ter-register.',
+                'fcm_sent' => false,
+                'anak_name' => $anak->name,
+                'anak_online' => (bool)$anak->is_online,
+                'device_name' => $anak->device_name ?? null,
+            ], 409);
+        }
+
+        $durasiMenit = (int)($valid['duration_minutes'] ?? 30); // Default 30 menit sesuai nama tombol Live GPS 30D.
+        $intervalMs = (int)($valid['interval_ms'] ?? 5_000);   // Default 5 DETIK = realtime smooth.
+
+        // Push via FcmPushService (existing production ready SUDAH verified notif muncul di HP anak!).
+        $pushResult = $this->fcm->pushToAndroid(
+            fcmToken: trim((string)$anak->fcm_token),
+            title: '📍 Mode Live GPS Aktif',
+            body: sprintf(
+                'Orang tua meminta lokasi realtime selama %d menit (latensi %dms). Akan kembali hemat baterai otomatis setelah selesai.',
+                $durasiMenit,
+                $intervalMs,
+            ),
+            data: [
+                'event_type' => 'request_gps_fast',
+                'duration_minutes' => (string)$durasiMenit,
+                'interval_ms' => (string)$intervalMs,
+                'profil_anak_id' => (string)$anak->id,
+                'triggered_by_user_id' => (string)$userId,
+                'commanded_at' => now()->toIso8601String(),
+            ],
+        );
+
+        if (!empty($pushResult['success'])) {
+            return response()->json([
+                'success' => true,
+                'message' => sprintf(
+                    '✅ Perintah Live GPS terkirim ke %s! Maks %d menit latensi ~%dms, marker maps akan update realtime.',
+                    $anak->name,
+                    $durasiMenit,
+                    $intervalMs,
+                ),
+                'fcm_sent' => true,
+                'fcm_message_id' => $pushResult['message_id'] ?? null,
+                'anak_name' => $anak->name,
+                'duration_minutes' => $durasiMenit,
+                'interval_ms' => $intervalMs,
+            ]);
+        }
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Gagal kirim perintah Live GPS ke perangkat anak: ' . ($pushResult['error'] ?? 'FCM error tidak diketahui'),
+            'fcm_sent' => false,
+            'fcm_error' => $pushResult['error'] ?? null,
+            'anak_name' => $anak->name,
+        ], 502);
     }
 
     /**
