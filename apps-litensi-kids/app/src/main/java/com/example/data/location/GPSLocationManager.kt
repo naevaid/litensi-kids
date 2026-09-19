@@ -112,9 +112,16 @@ object GPSLocationManager {
 
     // Coroutine scope dedicated untuk GPSLocationManager (IO dispatcher untuk Room DB operations).
     // SupervisorJob: jika satu job gagal, job lain tidak ikut di-cancel.
-    // Di-cancel saat removeUpdates() dipanggil (unpair/disconnect) untuk menghindari memory leak.
+    // [BUG FIX PAIRING ULANG] Sebelumnya ioScope = val dengan reference supervisorJob AWAL SAJA.
+    //   Jika user unpair → removeUpdates() cancel supervisorJob, ioScope MASIH pakai cancelled job!
+    //   Akibatnya insert Room + EXPEDITED upload trigger DI DALAM ioScope.launch TIDAK PERNAH BERJALAN
+    //   (silent JobCancellationException). Fix: ioScope jadi var + recreate setiap kali new supervisorJob.
     private var supervisorJob: Job = SupervisorJob()
-    private val ioScope: CoroutineScope = CoroutineScope(Dispatchers.IO + supervisorJob)
+    private var ioScope: CoroutineScope = createNewIoScopeFor(supervisorJob)
+
+    // Helper: buat CoroutineScope IO + SupervisorJob yang diberikan (hindari code double).
+    private fun createNewIoScopeFor(job: Job): CoroutineScope =
+        CoroutineScope(Dispatchers.IO + job)
 
     // (G5 Helper) Build LocationRequest sesuai MODE saat ini.
     // UPDATE AV6: JIKA SharedPrefs FORCE_FAST_UNTIL_MS > waktu sekarang → PAKAI CUSTOM INTERVAL
@@ -420,9 +427,10 @@ object GPSLocationManager {
         consecutiveFastPointCount = 0
 
         // Cancel semua job pending di coroutine scope (jangan sampai ada leak DB insert yang tidak selesai).
-        // Re-create baru SupervisorJob + scope agar jika user pair ulang tanpa kill app → ioScope masih active.
+        // Re-create baru SupervisorJob + scope agar jika user pair ulang tanpa kill app → ioScope masih active!
         runCatching { supervisorJob.cancel() }
         supervisorJob = SupervisorJob()
+        ioScope = createNewIoScopeFor(supervisorJob)
     }
 
     // (AV6 FIX LOCKED SCREEN) Dipanggil oleh LiveGpsForegroundService.onCreate saat service start ulang
