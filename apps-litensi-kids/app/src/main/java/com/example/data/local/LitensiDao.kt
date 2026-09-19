@@ -80,8 +80,9 @@ interface ChildProfileDao {
 // Batch limit = 10 row per upload (hemat kuota data).
 @Dao
 interface GpsCacheDao {
-    // Ambil SEMUA status PENDING urut ASC capturedAt (tua dulu, FIFO). LIMIT 10 = batch per upload.
-    @Query("SELECT * FROM pergerakan_gps_cache WHERE syncStatus = 'pending' ORDER BY capturedAtEpochMillis ASC LIMIT 10")
+    // Ambil SEMUA status PENDING urut ASC capturedAt (tua dulu, FIFO). LIMIT = parameter function (default 10 = batch per upload).
+    // Parameter :limit WAJIB dipakai di query SQL agar KSP Room TIDAK error "Unused parameter".
+    @Query("SELECT * FROM pergerakan_gps_cache WHERE syncStatus = 'pending' ORDER BY capturedAtEpochMillis ASC LIMIT :limit")
     suspend fun getPendingBatch(limit: Int = 10): List<PergerakanGpsCacheEntity>
 
     // Hitung total pending row (untuk debug / log worker)
