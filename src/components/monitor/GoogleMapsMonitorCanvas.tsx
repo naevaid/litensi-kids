@@ -440,7 +440,7 @@ export const GoogleMapsMonitorCanvas: React.FC<GoogleMapsMonitorCanvasProps> = (
 
         <div className="h-4 w-px bg-slate-700 mx-0.5" />
 
-        {/* (G5.3) Force Live GPS Update High Frequency 5s polling 30 detik */}
+        {/* (G5.3 AV6) Force Live GPS via FCM Push: interval 5s REAL di HP Anak selama 30 MENIT TEMPORER (PATUH WorkManager 15m Google Policy) */}
         <button
           type="button"
           onClick={onForceLiveUpdate}
@@ -450,12 +450,12 @@ export const GoogleMapsMonitorCanvas: React.FC<GoogleMapsMonitorCanvasProps> = (
               : 'text-orange-300 hover:bg-orange-950/60'}
           `}
           title={forceLiveActive
-            ? 'MODE LIVE AKTIF! Polling tiap 5 detik selama 30 detik. Marker maps bergerak realtime untuk perjalanan mobil/motor.'
-            : 'Aktifkan Mode Live GPS! 30 detik polling maps tiap 5 detik realtime. Cocok untuk track perjalanan anak.'}
+            ? '🚀 MODE LIVE GPS AKTIF! Perintah terkirim ke HP Anak via FCM: kirim GPS tiap 5 DETIK SELAMA 30 MENIT (temporer, hemat baterai auto revert). Marker Maps dashboard akan update realtime <10 detik — ideal untuk lacak perjalanan anak sekolah/pulang.'
+            : '🚀 Aktifkan Live GPS 5 Detik (30 Menit)! Kirim perintah FCM ke perangkat anak, update GPS realtime tanpa nunggu 15 menit WorkManager. Aman: hanya aktif saat dibutuhkan, expire otomatis hemat baterai.'}
         >
           <Radio className={`w-3 h-3 ${forceLiveActive ? 'text-rose-400 animate-ping' : 'text-orange-400'}`} />
           <span className={`${forceLiveActive ? 'font-bold' : ''}`}>
-            {forceLiveActive ? '● LIVE 5s (30d)' : '🚀 Live GPS 30d'}
+            {forceLiveActive ? '● LIVE 5s (30mnt)' : '🚀 Live GPS 5s (30mnt)'}
           </span>
         </button>
       </div>

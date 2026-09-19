@@ -402,14 +402,16 @@ export const AudioVideoMonitorPage: React.FC<AudioVideoMonitorPageProps> = ({ sh
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedChildId, forceLiveUntilMs]); // Re-init seluruh poll ketika forceLiveUntilMs SET/berubah atau ganti anak.
 
-  // (G5.3) Handler button Live Update → 2 TAHAPAN:
+  // (G5.3 AV6) Handler button Live Update → 2 TAHAPAN:
   // ---------------------------------------------------------------------------
   // (STEP 1) CALL BACKEND /monitor/gps/request-fast-mode (AV6) untuk MENGIRIM FCM
   //          PUSH DATA PAYLOAD ke HP Anak → GPSLocationManager singleton masuk MODE
   //          FAST interval 5 detik selama 30 menit (TEMPORER realtime, PATUH
   //          batas WorkManager 15 menit karena bukan periodic permanent).
-  // (STEP 2) HANYA JIKA FCM push SUKSES → set forceLiveUntilMs 30 detik polling maps
-  //          frontend agar user ORANG TUA mendapatkan update realtime 5 detik juga.
+  // (STEP 2) HANYA JIKA FCM push SUKSES → set forceLiveUntilMs 30 MENIT polling maps
+  //          frontend SAMA DURASI dengan mode HP Anak → user ORANG TUA dapat realtime
+  //          update 5 detik SELAMA 30 MENIT FULL juga (fallback token kosong = 30 detik
+  //          saja karena mode HP tidak aktif cepat).
   // ---------------------------------------------------------------------------
   // IDE CERDAS USER (ZERO HARDCODE / TIDAK MELANGGAR Google Policy): Daripada
   //   memaksa Periodic WorkManager <15 menit yang akan di-throttle oleh Play Protect
@@ -455,7 +457,7 @@ export const AudioVideoMonitorPage: React.FC<AudioVideoMonitorPageProps> = ({ sh
         return;
       }
 
-      // SUCCESS ✅: FCM push terkirim → Set polling 30 detik + Notifikasi jelas user.
+      // SUCCESS ✅: FCM push terkirim → Set polling 30 MENIT (sama durasi mode force HP Anak) + Notifikasi jelas user.
       const durasi = res.data.duration_minutes ?? 30;
       const interval = res.data.interval_ms ?? 5_000;
       setForceLiveUntilMs(Date.now() + durasi * 60 * 1000);
