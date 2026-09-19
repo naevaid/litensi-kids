@@ -73,7 +73,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate, onLoginSuccess
         id: u.id,
         name: u.name,
         email: u.email,
-        role: u.role === 'Maste' || u.role?.toLowerCase().includes('master')
+        role: u.role === 'Master' || u.role?.toLowerCase().includes('master')
           ? 'Master / Pemilik Web App'
           : 'Orang Tua / Administrator',
         avatarUrl: u.avatar_url || undefined,

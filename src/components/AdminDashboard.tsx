@@ -45,7 +45,7 @@ const defaultParentUser: UserType = (() => {
       name: session.name,
       email: session.email,
       role:
-        session.role === 'Maste' || session.role?.toLowerCase().includes('master')
+        session.role === 'Master' || session.role?.toLowerCase().includes('master')
           ? 'Master / Pemilik Web App'
           : 'Orang Tua / Administrator',
       avatarUrl: session.avatar_url || undefined,
@@ -102,7 +102,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const rawSession = getSessionUser();
   const isRealMasterAccount: boolean = Boolean(
     rawSession &&
-      (rawSession.role === 'Maste' ||
+      (rawSession.role === 'Master' ||
         rawSession.role === 'Master' ||
         rawSession.role === 'Owner' ||
         rawSession.role?.toLowerCase().includes('master') ||

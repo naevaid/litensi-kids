@@ -32,7 +32,7 @@ function sessionToUser(session: SessionUser | null): User | null {
     name: session.name,
     email: session.email,
     role:
-      session.role === 'Maste' || session.role?.toLowerCase().includes('master')
+      session.role === 'Master' || session.role?.toLowerCase().includes('master')
         ? 'Master / Pemilik Web App'
         : 'Orang Tua / Administrator',
     avatarUrl: session.avatar_url || undefined,
@@ -308,7 +308,11 @@ export default function App() {
 
   // --- NAVIGATE HELPER (single source of truth untuk semua child pages) ---
   const navigateToPage = useCallback((page: Page, opts?: { pengaturanSub?: PengaturanSubTab; inboxSub?: 'chat' | 'broadcast' }) => {
-    const loginNow = Boolean(activeUser && (activeUser.id ?? 0) > 0);
+    // FIX RACE CONDITION LOGIN: LoginPage L70 setSessionUser(u) SUDAH menyimpan ke localStorage
+    // SEBELUM onNavigate('dashboard') dipanggil L92. ActiveUser state masih async batched NULL.
+    // Fallback ke getSessionUser() agar user yang BARU login TIDAK di-redirect balik ke login.
+    const sessUser = getSessionUser();
+    const loginNow = Boolean((activeUser && (activeUser.id ?? 0) > 0) || ((sessUser?.id ?? 0) > 0));
     // Gatekeeping: user TIDAK login mencoba akses dashboard page → redirect login
     if (!loginNow && PUBLIC_PAGES.includes(page) === false) {
       console.warn('[App] navigateToPage ditolak (belum login): %s → redirect ke /login', page);
@@ -427,8 +431,9 @@ export default function App() {
           {/* Public Pages render langsung (bukan dalam dashboard) */}
           {PUBLIC_PAGES.includes(currentPage) && renderPublicPage()}
 
-          {/* Dashboard + child pages wrapper */}
-          {DASHBOARD_CHILD_PAGES.includes(currentPage) && isLoggedIn && (
+          {/* Dashboard + child pages wrapper — FIX RACE CONDITION: fallback ke localStorage session
+              agar setActiveUser async batched TIDAK menyebabkan fallback LoginPage ter-render dulu */}
+          {DASHBOARD_CHILD_PAGES.includes(currentPage) && (isLoggedIn || Boolean(getSessionUser()?.id)) && (
             <AdminDashboard
               key="admin-dashboard-root"
               user={activeUser || defaultUser}
@@ -439,8 +444,9 @@ export default function App() {
             />
           )}
 
-          {/* Safety fallback: Jika user BELUM LOGIN tapi path dashboard → redirect login */}
-          {DASHBOARD_CHILD_PAGES.includes(currentPage) && !isLoggedIn && (
+          {/* Safety fallback: Jika user BENAR-BENAR BELUM LOGIN (state + localStorage SAMA-SAMA NULL)
+              tapi path dashboard → redirect login */}
+          {DASHBOARD_CHILD_PAGES.includes(currentPage) && !isLoggedIn && !Boolean(getSessionUser()?.id) && (
             <LoginPage onNavigate={(p) => navigateToPage(p)} onLoginSuccess={handleLoginSuccess} />
           )}
 
