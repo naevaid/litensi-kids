@@ -159,21 +159,61 @@ object GPSLocationManager {
 
     // Mulai request update lokasi berkelanjutan. Dipanggil saat ViewModel detect isConnected=true pairing sukses.
     // Default AWAL MODE: STATIONARY (hemat baterai) — nanti adaptive switch ke FAST jika speed>=10 km/jam.
-    fun requestLocationUpdates(context: Context, profilAnakId: Int) {
+    // Parameter onPermissionMissing: Callback JIKA user BELUM grant ACCESS_FINE_LOCATION. ViewModel panggil ini untuk
+    //   menampilkan Toast / Banner merah di UI agar user ke Settings aktifkan "Allow all the time" Location.
+    //   JANGAN skip silent tanpa feedback ke user (BUG G8).
+    fun requestLocationUpdates(
+        context: Context,
+        profilAnakId: Int,
+        onPermissionMissing: ((pesan: String) -> Unit)? = null
+    ) {
         val ctx = context.applicationContext
         appContext = ctx
         currentProfilAnakId = profilAnakId
         currentMode = GpsMode.STATIONARY // default start diam
         consecutiveFastPointCount = 0
 
-        // 1. Permission check: ACCESS_FINE_LOCATION wajib (sudah ada di manifest L6). Jika belum granted → log warning skip (tidak crash).
-        if (ContextCompat.checkSelfPermission(
-                ctx,
-                Manifest.permission.ACCESS_FINE_LOCATION
-            ) != PackageManager.PERMISSION_GRANTED
-        ) {
-            Log.w(TAG, "requestLocationUpdates: ACCESS_FINE_LOCATION BELUM di-grant user. Skip GPS tracking.")
+        // 1. Permission check: ACCESS_FINE_LOCATION wajib (manifest L6).
+        //   G8 BUG FIX: JIKA BELUM GRANT — TIDAK BOLEH skip silent Log.w SAJA!
+        //   Harus: (a) Log.e ERROR (penting di logcat), (b) PANGGIL callback onPermissionMissing untuk UI toast / banner merah.
+        val hasFineLoc = ContextCompat.checkSelfPermission(ctx, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        val hasCoarseLoc = ContextCompat.checkSelfPermission(ctx, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        val hasBgLoc = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            ContextCompat.checkSelfPermission(ctx, Manifest.permission.ACCESS_BACKGROUND_LOCATION) == PackageManager.PERMISSION_GRANTED
+        } else {
+            true // SDK <29: background location = include dalam fine/coarse (tidak perlu permission terpisah)
+        }
+
+        // (G8.1) Minimal butuh salah satu FINE atau COARSE. Kalau keduanya tidak ada → FATAL stop tracking + CALLBACK ERROR UI
+        if (!hasFineLoc && !hasCoarseLoc) {
+            val errMsg = ("PERIZINAN LOKASI TIDAK DIAKTIFKAN! GPS tracking TIDAK BERJALAN → marker web akan tetap 0.0000 Null Island.\n" +
+                "Cara aktifkan (wajib):\n" +
+                "  1. Buka SETTINGS → Apps → LitensiKids → Permissions → Location.\n" +
+                "  2. Pilih opsi \"Allow all the time\" (terpenting untuk tracking background saat app tertutup).\n" +
+                "  3. Aktifkan juga \"Use precise location\" (toggle ON agar akurasi <20m tidak 200m kasar).\n" +
+                "  4. Kembali buka app LitensiKids.\n" +
+                "(SDK >=30 Android 11+): Jika opsi \"Allow all the time\" TIDAK MUNCUL → harus pilih dulu \"Allow only while using the app\" → kembali ke settings permission location → baru muncul Allow all the time di bawahnya.")
+            Log.e(TAG, "requestLocationUpdates FATAL MISSING PERMISSION: ACCESS_FINE_LOCATION & ACCESS_COARSE_LOCATION keduanya TIDAK DI-GRANT!")
+            Log.e(TAG, "  hasFineLoc=$hasFineLoc hasCoarseLoc=$hasCoarseLoc hasBgLoc=$hasBgLoc.")
+            Log.e(TAG, "  ↳ Skip GPS tracking. User WAJIB setting sebelum tracking bisa berjalan!")
+            onPermissionMissing?.invoke(errMsg)
             return
+        }
+
+        // (G8.1 WARNING NON-FATAL): FINE_LOCATION tidak ada tapi COARSE ada → accuracy 200-2000m buruk.
+        //   Background location tidak ada (SDK≥29): cuma bisa tracking saat app di foreground/open.
+        if (!hasFineLoc && hasCoarseLoc) {
+            val warnMsg = ("PERINGATAN: Hanya perizinan \"Approximate location\" (kira-kira) yang aktif.\n" +
+                "GPS akurasi hanya 200-2000m (buruk). Untuk akurasi 10-50m, aktifkan \"Use precise location\" ON di Settings → Apps → LitensiKids → Permissions → Location.")
+            Log.w(TAG, "requestLocationUpdates WARNING: ACCESS_FINE_LOCATION MISSING! Hanya COARSE yang di-grant → akurasi BURUK 200m+.")
+            onPermissionMissing?.invoke(warnMsg)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && !hasBgLoc && (hasFineLoc || hasCoarseLoc)) {
+            val warnBgMsg = ("PERINGATAN: Background location TIDAK di-allow (hanya Allow while using).\n" +
+                "GPS tracking HANYA BERJALAN SAAT APP TERBUKA / DI FOREGROUND. Jika HP tidur / app ditutup → tracking BERHENTI dan marker web tidak update.\n" +
+                "Solusi: Settings → Apps → LitensiKids → Permissions → Location → pilih \"Allow all the time\".")
+            Log.w(TAG, "requestLocationUpdates WARNING: ACCESS_BACKGROUND_LOCATION MISSING (SDK >=29). Tracking cuma jalan saat app TERBUKA/foreground.")
+            onPermissionMissing?.invoke(warnBgMsg)
         }
 
         // 2. Init FusedLocationProviderClient jika belum ada.

@@ -385,3 +385,106 @@ export function mapDbUserToTsUser(dbUser: Record<string, any>): import('../types
     pinMaster: null, // NEVER kirim actual pin value, client tidak butuh
   };
 }
+
+// ==========================================================================
+// (G8.2 FIX BUG KONSISTENSI STATUS ONLINE/OFFLINE ACROSS SEMUA HALAMAN!)
+// Helper Global hitung status ONLINE ProfilAnak.
+// --------------------------------------------------------------------------
+// PRINSIP ZERO ASSUMPTION (sesuai agent.md & KONVENSI.md L439):
+//  - Sumber utama = DB field `is_online` (cast boolean ProfilAnak.php L48).
+//  - Sumber fallback (jika is_online undefined/null karena old cache) =
+//    `last_active` timestamp diff < 2 MENIT = online, else offline.
+//  - Parameter includeGpsCheck DEFAULT TRUE: Jika GPS last_known_latitude
+//    BELUM ADA (NULL = companion belum pernah upload GPS pertama) →
+//    FORCE OFFLINE walaupun is_online=true (agar user tidak tertipu
+//    "Online" tapi marker di maps tetap 0,0 Null Island).
+//  - Parameter includeGpsCheck=FALSE: HANYA BOLEH digunakan jika memang
+//    halaman tersebut TIDAK MENAMPILKAN MAPS SAMA SEKALI (jarang terjadi).
+// ==========================================================================
+export interface StatusOnlineAnakResult {
+  isOnline: boolean;
+  label: 'Online' | 'Offline';
+  alasan: string; // untuk debug / tooltip
+}
+
+export function hitungStatusOnlineAnak(
+  db: any,
+  includeGpsCheck: boolean = true
+): StatusOnlineAnakResult {
+  // Step 1: Dapatkan boolean is_online mentah dari DB.
+  //   Handle berbagai format (boolean / number 1|0 / string "true"|"false").
+  let online: boolean = false;
+  const rawOnline = db?.is_online ?? db?.isOnline ?? null;
+  if (typeof rawOnline === 'boolean') {
+    online = rawOnline;
+  } else if (typeof rawOnline === 'number') {
+    online = rawOnline === 1;
+  } else if (typeof rawOnline === 'string') {
+    const low = rawOnline.trim().toLowerCase();
+    online = (low === 'true' || low === '1' || low === 'on' || low === 'yes');
+  } else {
+    online = false;
+  }
+  // Step 1b: Fallback is_online null/undefined → hitung dari last_active < 2menit.
+  if (rawOnline == null && db?.last_active != null) {
+    try {
+      const lastActiveTs = new Date(db.last_active).getTime();
+      if (!isNaN(lastActiveTs) && (Date.now() - lastActiveTs) < 2 * 60 * 1000) {
+        online = true;
+      }
+    } catch { /* ignore invalid date */ }
+  }
+
+  // Step 2: includeGpsCheck=TRUE → AND hasGps.
+  //   Jika GPS last_known belum pernah upload → walau is_online=true = OFFLINE.
+  //   Reason user report (G8): "Status Online tapi marker maps tidak bergerak (tetap 0,0)" = menyesatkan.
+  let alasan = online ? `is_online=${JSON.stringify(rawOnline)} dari DB ProfilAnak.` : 'is_online=false / null (tidak ada koneksi telemetry terbaru).';
+  if (includeGpsCheck && online) {
+    const lat = db?.last_known_latitude ?? db?.lastKnownLatitude ?? db?.latitude ?? null;
+    const lng = db?.last_known_longitude ?? db?.lastKnownLongitude ?? db?.longitude ?? null;
+    const hasGps = lat != null && lng != null && !isNaN(Number(lat)) && !isNaN(Number(lng)) && Math.abs(Number(lat)) > 1e-6 && Math.abs(Number(lng)) > 1e-6;
+    if (!hasGps) {
+      online = false;
+      alasan = 'is_online DB=true TAPI GPS last_known_latitude/longitude MASIH NULL (companion anak BELUM pernah upload data GPS pertama). includeGpsCheck=TRUE → FORCE OFFLINE agar user TIDAK TERTIPU "Online" tapi marker 0,0 Null Island.';
+    }
+  }
+
+  return {
+    isOnline: online,
+    label: online ? 'Online' : 'Offline',
+    alasan,
+  };
+}
+
+// Helper tambahan: Cek apakah anak sudah punya data GPS (last_known ada & bukan 0,0).
+// Digunakan untuk text placeholder "Menunggu data GPS pertama" di UI.
+export function anakHasGpsData(db: any): boolean {
+  const lat = db?.last_known_latitude ?? db?.lastKnownLatitude ?? db?.latitude ?? null;
+  const lng = db?.last_known_longitude ?? db?.lastKnownLongitude ?? db?.longitude ?? null;
+  if (lat == null || lng == null) return false;
+  const ln = Number(lat), lg = Number(lng);
+  if (isNaN(ln) || isNaN(lg)) return false;
+  // Skip 0,0 Null Island / noise sangat kecil < 1e-6 derajat (~11cm).
+  return Math.abs(ln) > 1e-6 && Math.abs(lg) > 1e-6;
+}
+
+// Helper: Hitung relative time timestamp ISO → string "Baru saja" / "X mnt lalu" / "X jam lalu".
+//   (digunakan di semua halaman untuk card status lastUpdated ProfilAnak).
+export function hitungRelativeTimeAnak(isoStr: string | null | undefined): string {
+  if (!isoStr) return 'Menunggu data pertama';
+  try {
+    const d = new Date(isoStr).getTime();
+    if (isNaN(d)) return String(isoStr);
+    const diffMs = Date.now() - d;
+    const detik = Math.floor(diffMs / 1000);
+    if (detik < 60) return 'Baru saja';
+    const mnt = Math.floor(detik / 60);
+    if (mnt < 60) return `${mnt} mnt lalu`;
+    const jam = Math.floor(mnt / 60);
+    if (jam < 24) return `${jam} jam lalu`;
+    const hari = Math.floor(jam / 24);
+    return `${hari} hari lalu`;
+  } catch {
+    return String(isoStr);
+  }
+}

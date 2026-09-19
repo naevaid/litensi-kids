@@ -8,7 +8,7 @@ import {
   Radio, HelpCircle, Camera, Navigation
 } from 'lucide-react';
 import { User as UserType } from '../../types';
-import { api } from '../../lib/apiClient';
+import { api, hitungStatusOnlineAnak, hitungRelativeTimeAnak, anakHasGpsData } from '../../lib/apiClient';
 
 interface DashboardOverviewPageProps {
   currentUser: UserType | null;
@@ -610,7 +610,12 @@ export const DashboardOverviewPage: React.FC<DashboardOverviewPageProps> = ({
               <option>Semua Perangkat</option>
               {daftarPerangkat && daftarPerangkat.length > 0 ? (
                 daftarPerangkat.map((p: any) => {
-                  const label = `${p.device_name || `Perangkat ${p.anak_name || ''}`}${p.is_online ? ' • Online' : ''}${p.battery_level ? ` ${p.battery_level}%` : ''}`;
+                  // (G8.2 KONSISTENSI!) Pakai helper global hitungStatusOnlineAnak INCLUDE GPS CHECK!
+                  //   Agar label "• Online" di filter SAMA PERSIS dengan status card & marker di
+                  //   halaman /monitor (AudioVideoMonitor). Tidak boleh Dashboard Online tapi Monitor
+                  //   Offline hanya karena GPS belum diupload (menyesatkan user!).
+                  const st = hitungStatusOnlineAnak(p, true);
+                  const label = `${p.device_name || `Perangkat ${p.anak_name || p.name || ''}`}${st.isOnline ? ` • ${st.label}` : ''}${p.battery_level ? ` ${p.battery_level}%` : ''}`;
                   return <option key={'dev-' + p.id} value={label}>{label.trim()}</option>;
                 })
               ) : (

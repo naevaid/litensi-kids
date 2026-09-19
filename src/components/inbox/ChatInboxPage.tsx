@@ -5,7 +5,7 @@ import {
   AlertTriangle, Bell, ArrowLeft, Plus, MessageCircle
 } from 'lucide-react';
 import { User as UserType } from '../../types';
-import { api, getSessionUser } from '../../lib/apiClient';
+import { api, getSessionUser, hitungStatusOnlineAnak, hitungRelativeTimeAnak } from '../../lib/apiClient';
 
 interface ChatMessage {
   id: string;
@@ -62,7 +62,12 @@ const mapApiAnakToChildOption = (db: any): ChildOptionItem | null => {
   const deviceModel = db.device_model ? String(db.device_model).trim() : null;
   const osVersion = db.os_version ? String(db.os_version).trim() : null;
   const batteryLevel = db.battery_level !== null && db.battery_level !== undefined && !isNaN(Number(db.battery_level)) ? Math.max(0, Math.min(100, Number(db.battery_level))) : null;
-  const isOnline = typeof db.is_online === 'boolean' ? db.is_online : (String(db.is_online ?? '').toLowerCase() === 'true' || String(db.is_online ?? '') === '1');
+
+  // (G8.2 KONSISTENSI!) Gunakan HELPER GLOBAL hitungStatusOnlineAnak INCLUDE GPS CHECK.
+  //   Status ONLINE di Chat Inbox SAMA PERSIS dengan Dashboard / Monitor / KelolaAnak.
+  //   TIDAK BOLEH logic parsing sendiri (string "true"/"1") yang berpotensi beda output!
+  const statusOnline = hitungStatusOnlineAnak(db, true);
+  const isOnline: boolean = statusOnline.isOnline;
 
   // Display name untuk title thread: HANYA nama anak (JANGAN fallback ke device / Android / kode SM-X)
   const displayName = namaLengkap || `Profil Anak #${id}`;
@@ -76,6 +81,10 @@ const mapApiAnakToChildOption = (db: any): ChildOptionItem | null => {
   if (osVersion) deviceParts.push(osVersion);
   if (!deviceName && deviceModel) deviceParts.push(deviceModel); // fallback device_model JIKA device_name KOSONG
   const deviceStr = deviceParts.length > 0 ? deviceParts.join(' • ') : 'Perangkat';
+
+  // (G8.2) lastTime untuk thread list = pakai helper global hitungRelativeTimeAnak.
+  //   Prioritas: last_active (telemetry terbaru) > last_gps_captured_at. Tidak buat logic sendiri!
+  const lastTime = hitungRelativeTimeAnak(db.last_active ?? db.last_gps_captured_at ?? null);
 
   return {
     id,

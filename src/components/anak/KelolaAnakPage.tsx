@@ -11,32 +11,40 @@ import { QRCodeSVG } from 'qrcode.react';
 import { ChildProfile } from '../../types';
 import { AvatarPicker } from './AvatarPicker';
 import { renderAvatarIcon } from './AvatarIconSelector';
-import { api, getSessionUser } from '../../lib/apiClient';
+import { api, getSessionUser, hitungStatusOnlineAnak, hitungRelativeTimeAnak } from '../../lib/apiClient';
 
 interface KelolaAnakPageProps {
   showToast: (msg: string, type?: 'success' | 'error' | 'warning' | 'info') => void;
 }
 
 // Helper mapping data dari DB (snake_case) ke TypeScript interface (camelCase)
-const mapDbAnakToChildProfile = (db: any): ChildProfile => ({
-  id: String(db.id ?? `child-${Date.now()}`),
-  name: db.name ?? '',
-  age: Number(db.age ?? 8),
-  gender: db.gender ?? 'laki-laki',
-  deviceName: db.device_name ?? db.deviceName ?? '',
-  deviceModel: db.device_model ?? db.deviceModel ?? '',
-  osVersion: db.os_version ?? db.osVersion ?? '-',
-  batteryLevel: Number(db.battery_level ?? db.batteryLevel ?? 80),
-  isOnline: Boolean(db.is_online ?? db.isOnline ?? false),
-  status: (db.status as any) ?? 'active',
-  avatar: db.avatar ?? 'icon:Smile',
-  qrPairingCode: db.qr_pairing_code ?? db.qrPairingCode ?? `LTN-${Math.floor(1000 + Math.random() * 9000)}-SEC`,
-  pairingPin: db.pairing_pin ?? db.pairingPin ?? String(Math.floor(100000 + Math.random() * 900000)),
-  pairedAt: db.paired_at ? new Date(db.paired_at).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }) : '-',
-  lastActive: db.last_active ? (Date.now() - new Date(db.last_active).getTime() < 60_000 ? 'Aktif saat ini' : `${Math.round((Date.now() - new Date(db.last_active).getTime()) / 60_000)} menit yang lalu`) : 'Baru saja',
-  usedToday: db.used_today ?? db.usedToday ?? '0m',
-  notes: db.notes ?? undefined,
-});
+// (G8.2 KONSISTENSI!) Semua status ONLINE/OFFLINE dan last_active relative time = pakai
+//   helper global apiClient.ts (hitungStatusOnlineAnak + hitungRelativeTimeAnak).
+//   Hasil = SAMA PERSIS dengan DashboardOverview, ChatInbox, AudioVideoMonitor.
+const mapDbAnakToChildProfile = (db: any): ChildProfile => {
+  // (G8.2) includeGpsCheck TRUE untuk hindari "Online" tapi GPS null marker 0,0
+  const statusOnline = hitungStatusOnlineAnak(db, true);
+  return {
+    id: String(db.id ?? `child-${Date.now()}`),
+    name: db.name ?? '',
+    age: Number(db.age ?? 8),
+    gender: db.gender ?? 'laki-laki',
+    deviceName: db.device_name ?? db.deviceName ?? '',
+    deviceModel: db.device_model ?? db.deviceModel ?? '',
+    osVersion: db.os_version ?? db.osVersion ?? '-',
+    batteryLevel: Number(db.battery_level ?? db.batteryLevel ?? 80),
+    isOnline: statusOnline.isOnline,
+    status: (db.status as any) ?? 'active',
+    avatar: db.avatar ?? 'icon:Smile',
+    qrPairingCode: db.qr_pairing_code ?? db.qrPairingCode ?? `LTN-${Math.floor(1000 + Math.random() * 9000)}-SEC`,
+    pairingPin: db.pairing_pin ?? db.pairingPin ?? String(Math.floor(100000 + Math.random() * 900000)),
+    pairedAt: db.paired_at ? new Date(db.paired_at).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }) : '-',
+    // (G8.2) Pakai helper global relative time: last_active = DB ProfilAnak L32 field.
+    lastActive: hitungRelativeTimeAnak(db.last_active ?? db.lastActive ?? null),
+    usedToday: db.used_today ?? db.usedToday ?? '0m',
+    notes: db.notes ?? undefined,
+  };
+};
 
 const DEFAULT_AVATAR = 'icon:Smile';
 

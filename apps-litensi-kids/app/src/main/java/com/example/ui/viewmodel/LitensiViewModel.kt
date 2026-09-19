@@ -262,8 +262,18 @@ class LitensiViewModel(application: Application) : AndroidViewModel(application)
                         Log.i("LitensiViewModel-G3", "GPSUploadWorker schedulePeriodic KEEP done.")
 
                         // 3. Mulai GPS tracking FusedLocationProviderClient (interval 5min, displacement 10m)
-                        GPSLocationManager.requestLocationUpdates(ctx, profilAnakId = anakId)
-                        Log.i("LitensiViewModel-G3", "GPSLocationManager requestLocationUpdates started for anak=$anakId")
+                        // (G8.1 FIX BUG): Inject callback onPermissionMissing untuk JIKA user BELUM grant location permission
+                        //   → SET _toastMessage ERROR BANNER MERAH dengan panduan langkah-langkah setting "Allow all the time".
+                        //   TIDAK BOLEH skip silent cuma log.w "ACCESS_FINE_LOCATION BELUM di-grant" tanpa user tau!
+                        GPSLocationManager.requestLocationUpdates(
+                            context = ctx,
+                            profilAnakId = anakId,
+                            onPermissionMissing = { pesanError ->
+                                Log.w("LitensiViewModel-G3", "GPSLocationManager onPermissionMissing triggered → set toastMessage error banner merah!")
+                                _toastMessage.value = ("⚠️ PERIZINAN LOKASI DIBUTUHKAN AGAR GPS TRACKING BERJALAN (marker web tidak akan bergerak kalau ini dilewati):\n\n$pesanError")
+                            }
+                        )
+                        Log.i("LitensiViewModel-G3", "GPSLocationManager requestLocationUpdates started for anak=$anakId (dengan onPermissionMissing callback error)")
 
                         // 4. Load list zona geofence dari GF1 API → register ke GeofencingClient Play Services
                         //    (asynchronous IO di GeofenceManager internal coroutine scope, tidak block UI)

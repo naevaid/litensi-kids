@@ -10,7 +10,7 @@ import {
   Headphones, Info, GripHorizontal, Move
 } from 'lucide-react';
 import { GoogleMapsMonitorCanvas, ChildDeviceMonitor } from './GoogleMapsMonitorCanvas';
-import { api, getSessionUser } from '../../lib/apiClient';
+import { api, getSessionUser, hitungStatusOnlineAnak, anakHasGpsData, hitungRelativeTimeAnak } from '../../lib/apiClient';
 import { AVATAR_ICON_OPTIONS } from '../anak/AvatarIconSelector';
 
 // Helper: ubah string avatar (icon:Smile / URL) menjadi image URL yang bisa dipakai di <img src>
@@ -77,30 +77,26 @@ const mapDbAnakToChildDeviceMonitor = (db: any): ChildDeviceMonitor => {
   //   TIDAK ADA fallback 50. JIKA null/unknown → 0 (akan ditampilkan sebagai ?% di UI, atau 0% unknown).
   const battery = Number(db.battery_level ?? db.batteryLevel ?? 0);
 
-  // (G4.2 FIX) IsOnline = db.is_online dari telemetry update last_active <2 menit.
-  const isOnline = Boolean(db.is_online ?? db.isOnline ?? false);
+  // (G8.2 KONSISTENSI!) Gunakan HELPER GLOBAL hitungStatusOnlineAnak includeGpsCheck=TRUE.
+  //   Alasan: Di halaman MONITOR SELALU ADA MAPS. Jadi jika GPS null → harus OFFLINE (tidak menyesatkan user).
+  //   Hasil 100% SAMA dengan KelolaAnakPage, DashboardOverview, ChatInbox.
+  const statusOnline = hitungStatusOnlineAnak(db, true);
+  const isOnline = statusOnline.isOnline;
 
-  // (G4.2 FIX) Last updated time = LAST_GPS_CAPTURED_AT (waktu HP capture GPS di perangkat anak) BUKAN fallback.
-  //   JIKA last_gps_captured_at ADA → pakai itu (akurat! bukan waktu server).
-  //   JIKA TIDAK ADA → pakai last_active (jika ada).
-  //   JIKA KEDUANYA NULL → "Menunggu data GPS pertama" (user tahu companion belum upload sama sekali).
+  // (G8.2 KONSISTENSI!) Last updated relative time = pakai HELPER GLOBAL hitungRelativeTimeAnak SAMA di SEMUA HALAMAN.
+  //   Prioritas: last_gps_captured_at (GPS capture asli HP) > last_active. JIKA keduanya null → "Menunggu data pertama".
   const capturedAtIso = db.last_gps_captured_at ?? db.last_active ?? null;
-  const hasAnyTimestamp = capturedAtIso != null && String(capturedAtIso).trim().length > 0;
-  const lastUpdated = hasAnyTimestamp
-    ? (Date.now() - new Date(capturedAtIso).getTime() < 60_000
-        ? 'Baru saja'
-        : `${Math.max(1, Math.round((Date.now() - new Date(capturedAtIso).getTime()) / 60_000))} mnt lalu`)
-    : 'Menunggu data GPS pertama';
+  const lastUpdated = hitungRelativeTimeAnak(capturedAtIso);
 
   // (G4.2 ZERO HARDCODE) AMBIL LAT/LNG DARI last_known_latitude / last_known_longitude — HANYA field INI SAJA source of truth.
   //   TIDAK BOLEH ada default latDefault / lngDefault apapun (tidak boleh hardcode Jakarta Monas / Semarang / anywhere).
   //   JIKA null → set ke 0,0 (Null Island di tengah Samudra Atlantik) → jelas bagi user marker abu-abu = BELUM ADA DATA GPS,
   //   BUKAN menunjukkan lokasi PALSU yang menyesatkan.
-  const lastLatRaw = db.last_known_latitude ?? db.lastKnownLatitude ?? db.latitude ?? null;
-  const lastLngRaw = db.last_known_longitude ?? db.lastKnownLongitude ?? db.longitude ?? null;
-  const hasGps = lastLatRaw != null && lastLngRaw != null && !isNaN(Number(lastLatRaw)) && !isNaN(Number(lastLngRaw));
-  const latitude = hasGps ? Number(lastLatRaw) : 0;
-  const longitude = hasGps ? Number(lastLngRaw) : 0;
+  const hasGps = anakHasGpsData(db); // (G8.2) Pakai helper global SAMA.
+  const lat = Number(db.last_known_latitude ?? db.lastKnownLatitude ?? db.latitude ?? 0);
+  const lng = Number(db.last_known_longitude ?? db.lastKnownLongitude ?? db.longitude ?? 0);
+  const latitude = hasGps ? lat : 0;
+  const longitude = hasGps ? lng : 0;
 
   // (G4.2 ZERO HARDCODE) Location Name — DARI DB.notes JIKA ADA. JIKA TIDAK → "Menunggu data GPS" JANGAN hardcode "Rumah".
   const notesTrim = (db.notes ?? '').toString().trim();
@@ -118,8 +114,8 @@ const mapDbAnakToChildDeviceMonitor = (db: any): ChildDeviceMonitor => {
     avatar: avatarToImageUrl(db.avatar ?? 'icon:Smile', 128),
     deviceModel: modelStr,
     battery,
-    // (G4.2 FIX) isOnline DI-AND-kan hasGps juga: JIKA GPS belum pernah upload → walau last_active baru = OFFLINE abu-abu (agar user tidak tertipu "Online" tapi marker tidak ada GPS)
-    isOnline: isOnline && hasGps,
+    // (G8.2 FIX) isOnline MURNI dari HELPER GLOBAL (SUDAH include AND hasGps di dalam helper, tidak perlu && hasGps disini lagi untuk hindari double logic dan inkonsisten!)
+    isOnline,
     status: hasGps ? (isOnline ? `Live • ${lastUpdated}` : `Offline • ${lastUpdated}`) : `GPS Belum Tersedia • ${lastUpdated}`,
     locationName,
     latitude,
