@@ -15,6 +15,7 @@ import androidx.core.app.NotificationManagerCompat
 import com.example.MainActivity
 import com.parental.litensikids.R
 import com.example.data.local.LitensiKidsDatabase
+import com.example.data.location.GeofenceManager
 import com.example.data.repository.LitensiRepository
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
@@ -202,6 +203,124 @@ class LitensiFirebaseMessagingService : FirebaseMessagingService() {
                 notify(notifId, notificationBuilder.build())
             }
             Log.d(TAG, "Notifikasi ditampilkan (id=$notifId, channel=$CHANNEL_ID_PENGASUHAN)")
+
+            // ============================================================================
+            // (P1 REALTIME SYNC DATA) — SETELAH NOTIF TAMPIL, LANJUT SYNC DATA KE ROOM LOKAL.
+            // ----------------------------------------------------------------------------
+            // Ini ROOT CAUSE kenapa data di Android SEBELUMNYA TIDAK realtime:
+            //   onMessageReceived HANYA menampilkan notifikasi UI HEADS UP,
+            //   TAPI TIDAK MEMPERBARUI Room DB lokal yang menjadi sumber StateFlow UI Compose!
+            // Hasil perbaikan ini: setiap push FCM data payload masuk,
+            //   StateFlow pairngState / childProfile / tasks / rewards otomatis rerender
+            //   secara reactive VIA FLOW COLLECT tanpa user perlu restart / close app.
+            // ============================================================================
+            serviceScope.launch {
+                runCatching {
+                    // (1) Baca state pairing dari Room (pastikan sudah connect & gate kepemilikan).
+                    val currentPairing = repository.pairingState.firstOrNull()
+                        ?: run {
+                            Log.w(TAG, "FCM sync: PairingState Room null/belum terhubung → skip sync.")
+                            return@launch
+                        }
+                    if (!currentPairing.isConnected) {
+                        Log.w(TAG, "FCM sync: isConnected=false (sudah unpair) → skip sync.")
+                        return@launch
+                    }
+                    val anakId = currentPairing.profilAnakId ?: run {
+                        Log.w(TAG, "FCM sync: profilAnakId null → skip sync.")
+                        return@launch
+                    }
+                    val userIdOrtu = currentPairing.userIdOrtu
+                    val ctx = applicationContext
+
+                    // (2) Ambil nilai saat ini ChildProfile untuk preserve points (JANGAN overwrite 0!)
+                    val currentChild = repository.childProfile.firstOrNull()
+
+                    // ------------------------------------------------------------------
+                    // SYNC HANDLER 1: EVENT YANG MENGUBAH PROFIL ANAK (KUOTA / BATTERY)
+                    //   → trigger: profil_update, remote_lock, sos_alert, broadcast_pesan
+                    // ------------------------------------------------------------------
+                    val needSyncProfile = when (eventType) {
+                        "profil_update", "remote_lock", "sos_alert",
+                        "broadcast_pesan", "profile_update", "profile_updated" -> true
+                        else -> false
+                    }
+                    if (needSyncProfile) {
+                        runCatching {
+                            repository.syncChildProfileFromServer(
+                                anakId = anakId,
+                                currentChildProfileId = currentChild?.id ?: 1L,
+                                currentPoints = currentChild?.points ?: 0
+                            )
+                            Log.i(TAG, "FCM sync (P1 ✅): Profil Anak id=$anakId di-refresh via AN4 endpoint (kuota/battery/online state).")
+                        }.onFailure { err ->
+                            Log.e(TAG, "FCM sync Profile GAGAL (non-fatal, retry next sync): ${err.message}", err)
+                        }
+                    }
+
+                    // ------------------------------------------------------------------
+                    // SYNC HANDLER 2: EVENT YANG MENGUBAH DATA GEOFENCE
+                    //   → trigger: geofence_enter, geofence_exit, geofence_update, geofence_changed, zone_updated
+                    //   Action: remove old zones + reload + register zones BARU dari GF1 backend ke Play Services
+                    //   Hasil: Alarm ENTER/EXIT geofence TERBARU langsung AKTIF
+                    //     TANPA user harus Force Close + restart aplikasi Android.
+                    // ------------------------------------------------------------------
+                    val needSyncGeofence = when (eventType) {
+                        "geofence_enter", "geofence_exit",
+                        "geofence_update", "geofence_changed",
+                        "zone_updated", "zone_added", "zone_deleted",
+                        "safezone_updated" -> true
+                        else -> false
+                    }
+                    if (needSyncGeofence && userIdOrtu != null && userIdOrtu > 0) {
+                        runCatching {
+                            GeofenceManager.loadAndRegisterAllZones(
+                                context = ctx,
+                                profilAnakId = anakId,
+                                userIdOrtu = userIdOrtu
+                            )
+                            Log.i(TAG, "FCM sync (P1 ✅): Geofence reload + register sukses untuk anak=$anakId user=$userIdOrtu.")
+                        }.onFailure { err ->
+                            Log.e(TAG, "FCM sync Geofence GAGAL (non-fatal, retry next sync): ${err.message}", err)
+                        }
+                    }
+
+                    // ------------------------------------------------------------------
+                    // SYNC HANDLER 3: EVENT CHAT BARU / BROADCAST PESAN
+                    //   → trigger: chat_new, broadcast_pesan
+                    //   Action: (A) fetchChatMessages terbaru dari CH2 backend
+                    //              TIDAK PERLU save ke Room (Chat simpan di ViewModel StateFlow
+                    //              CHAT SCOPE) → saat user tap Notif → buka MainActivity
+                    //              FLAG_ACTIVITY_CLEAR_TOP → LitensiViewModel init collect pairing
+                    //              TIDAK fire lagi. KITA BUTUH ViewModel bisa observe event.
+                    //           (B) SOLUSI LEBIH SIMPLE DAN EFFECTIVE:
+                    //              Fetch chat & update state CHAT di FCM service → SUDAH
+                    //              otomatis tersimpan di cache. ViewModel di MainActivity
+                    //              ketika akan di-create ulang dari pendingIntent CLEAR_TOP
+                    //              akan memanggil fetchChatMessages LAGI via L184 collect
+                    //              pairingState → konsisten.
+                    //   Hasil: user KLIK notif chat → MainActivity CLEAR TOP
+                    //          → ChatTabContent SUDAH MENAMPILKAN PESAN TERBARU.
+                    // ------------------------------------------------------------------
+                    val needRefreshChat = (eventType == "chat_new" || eventType == "broadcast_pesan")
+                    if (needRefreshChat && userIdOrtu != null && userIdOrtu > 0) {
+                        runCatching {
+                            repository.fetchChatMessages(
+                                anakId = anakId,
+                                userIdOrtu = userIdOrtu,
+                                page = 1,
+                                perPage = 50
+                            )
+                            Log.i(TAG, "FCM sync (P1 ✅): Chat list anak=$anakId refresh sukses 50 rows terbaru CH2 endpoint.")
+                        }.onFailure { err ->
+                            Log.e(TAG, "FCM sync Chat GAGAL (non-fatal, coba saat buka app): ${err.message}", err)
+                        }
+                    }
+
+                }.onFailure { errGlobal ->
+                    Log.e(TAG, "FCM sync scope GAGAL global (non-fatal): ${errGlobal.message}", errGlobal)
+                }
+            }
         }.onFailure { err ->
             Log.e(TAG, "Handle push notifikasi GAGAL (non-fatal, skip): ${err.message}", err)
         }

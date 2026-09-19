@@ -1,6 +1,7 @@
 package com.example.data.repository
 
 import android.os.Build
+import android.util.Log
 import com.example.data.local.LitensiKidsDatabase
 import com.example.data.model.ChildProfileEntity
 import com.example.data.model.PairingStateEntity
@@ -446,5 +447,55 @@ class LitensiRepository(
         }
         if (!resp.success) error(resp.message ?: "Gagal upload data GPS pergerakan anak.")
         return resp.data
+    }
+
+    // =========================================================================
+    // (P1 FCM REALTIME SYNC) — Helper sync Profil Anak TERBARU dari server ke Room lokal.
+    // =========================================================================
+    // Dipanggil oleh LitensiFirebaseMessagingService.onMessageReceived setiap menerima
+    //   event_type = profil_update / remote_lock / broadcast_pesan (perubahan data dari DB server).
+    // Hasil: ChildProfileEntity di Room di-upsert (OnConflict.REPLACE by id=1) →
+    //   StateFlow di LitensiViewModel otomatis emit value BARU → UI Compose reactive rerender otomatis
+    //   TANPA user perlu close app / pull to refresh / restart.
+    // @param anakId: ProfilAnak ID (dari PairingState.profilAnakId).
+    // @param currentChildProfileId: ID row ChildProfile yang ada di Room (default = 1 karena hanya 1 perangkat).
+    // @param currentPoints: points (poin reward) SEKARANG di Room — JANGAN di-overwrite dengan 0 dari API
+    //                        (modul poin/reward server-side belum ada, tetap gunakan nilai lokal saat ini).
+    suspend fun syncChildProfileFromServer(
+        anakId: Int,
+        currentChildProfileId: Long = 1L,
+        currentPoints: Int = 0
+    ) {
+        require(anakId > 0) { "syncChildProfileFromServer: anakId wajib > 0 (nilai dikirim=$anakId)." }
+
+        // (1) Call AN4 GET detail profil anak TERBARU dari DB server.
+        val profilDto = apiCall { apiService.getProfilAnak(id = anakId) }.data
+
+        // (2) Hitung kuota & sisa waktu layar dari data server (sinkronisasi KONSISTEN dengan web).
+        val kuotaHarian = profilDto.avMinutesDailyOverride ?: 0
+        val usedToday = profilDto.usedToday ?: 0
+        val sisaWaktu = (kuotaHarian - usedToday).coerceAtLeast(0)
+        val battery = profilDto.batteryLevel ?: 0
+
+        // (3) Upsert ke Room (ChildProfileDao.saveProfile = @Insert(onConflict = REPLACE)).
+        // NOTE: Points TETAP ambil dari currentPoints (local) karena server-side modul
+        //       point/reward BELUM ADA endpoint-nya (jangan overwrite ke 0 hardcode!).
+        db.childProfileDao().saveProfile(
+            com.example.data.model.ChildProfileEntity(
+                id = currentChildProfileId,
+                points = currentPoints,
+                screenTimeRemainingMinutes = sisaWaktu,
+                totalScreenTimeMinutes = kuotaHarian,
+                currentSafeZone = "", // safe zone name modul belum ada API; tetap kosong (zero hardcode).
+                batteryLevel = battery,
+                isGpsActive = profilDto.isOnline == true, // Approximation: is_online dari server.
+                lastCheckInTime = "" // last_check_in akan di-update saat user tap manual Check-in.
+            )
+        )
+        Log.d(
+            "LitensiRepo-Sync",
+            "syncChildProfileFromServer SUKSES id=$anakId: " +
+            "kuota=$kuotaHarian used=$usedToday sisa=$sisaWaktu battery=$battery%"
+        )
     }
 }
