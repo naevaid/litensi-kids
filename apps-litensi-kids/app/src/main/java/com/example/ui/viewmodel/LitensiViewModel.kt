@@ -281,7 +281,13 @@ class LitensiViewModel(application: Application) : AndroidViewModel(application)
                         GPSUploadWorker.schedulePeriodic(ctx)
                         Log.i("LitensiViewModel-G3", "GPSUploadWorker schedulePeriodic KEEP done.")
 
-                        // 3. Mulai GPS tracking FusedLocationProviderClient (interval 5min, displacement 10m)
+                        // 3. (P2 SAFETY NET) Schedule LitensiSyncDownloadWorker 15min →
+                        //    Pull download sync profil_anak latest kuota + reload geofence GF1 terbaru.
+                        //    Garansi walau FCM push missed Doze / offline HP restart tanpa buka app.
+                        LitensiSyncDownloadWorker.schedulePeriodic(ctx)
+                        Log.i("LitensiViewModel-G3", "LitensiSyncDownloadWorker schedulePeriodic KEEP done (P2 sync periodic 15min safety net).")
+
+                        // 4. Mulai GPS tracking FusedLocationProviderClient (interval 5min, displacement 10m)
                         // (G8.1 FIX BUG): Inject callback onPermissionMissing untuk JIKA user BELUM grant location permission
                         //   → SET _toastMessage ERROR BANNER MERAH dengan panduan langkah-langkah setting "Allow all the time".
                         //   TIDAK BOLEH skip silent cuma log.w "ACCESS_FINE_LOCATION BELUM di-grant" tanpa user tau!
@@ -295,12 +301,12 @@ class LitensiViewModel(application: Application) : AndroidViewModel(application)
                         )
                         Log.i("LitensiViewModel-G3", "GPSLocationManager requestLocationUpdates started for anak=$anakId (dengan onPermissionMissing callback error)")
 
-                        // 4. Load list zona geofence dari GF1 API → register ke GeofencingClient Play Services
+                        // 5. Load list zona geofence dari GF1 API → register ke GeofencingClient Play Services
                         //    (asynchronous IO di GeofenceManager internal coroutine scope, tidak block UI)
                         GeofenceManager.loadAndRegisterAllZones(ctx, profilAnakId = anakId, userIdOrtu = userIdOrtu)
                         Log.i("LitensiViewModel-G3", "GeofenceManager loadAndRegisterAllZones triggered (async IO, user=$userIdOrtu)")
                     } else {
-                        Log.w("LitensiViewModel-G3", "Skip schedule GPS/Telemetry worker: anakId=$anakId userIdOrtu=$userIdOrtu")
+                        Log.w("LitensiViewModel-G3", "Skip schedule GPS/Telemetry/Sync worker: anakId=$anakId userIdOrtu=$userIdOrtu")
                     }
                 }
             }
@@ -369,6 +375,9 @@ class LitensiViewModel(application: Application) : AndroidViewModel(application)
             // (G3.10) Cancel GPSUploadWorker periodic 15min + expedited geofence one-time work
             GPSUploadWorker.cancel(ctx)
 
+            // (P2 SAFETY NET) Cancel LitensiSyncDownloadWorker periodic 15min agar tidak boros baterai setelah unpair
+            LitensiSyncDownloadWorker.cancel(ctx)
+
             // (G3.10) Stop FusedLocationProviderClient GPS tracking (agar tidak boros baterai setelah unpair)
             GPSLocationManager.removeUpdates(ctx)
 
@@ -384,7 +393,7 @@ class LitensiViewModel(application: Application) : AndroidViewModel(application)
             _currentScreen.value = AppScreen.WELCOME
             _chatMessages.value = emptyList() // bersihkan chat saat disconnect
             _toastMessage.value = "Perangkat telah terputus dari akun Orang Tua."
-            Log.i("LitensiViewModel-G3", "disconnectDevice: Semua worker + GPS + Geofence di-cleanup SUKSES.")
+            Log.i("LitensiViewModel-G3", "disconnectDevice: Semua worker (Telemetry/GPSUpload/SyncDownload) + GPS + Geofence di-cleanup SUKSES.")
         }
     }
 

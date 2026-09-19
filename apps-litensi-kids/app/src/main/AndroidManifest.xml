@@ -49,6 +49,25 @@
         <receiver
             android:name="com.example.data.location.GeofenceEventReceiver"
             android:exported="false" />
+        <!-- (G3.13 P2 Safety Net) BroadcastReceiver untuk menangkap HP BOOT COMPLETED / APP UPGRADE PACKAGE REPLACED.
+             Tujuan: Reschedule 3 Worker Periodic (Telemetry, GPSUpload, SyncDownload) + restart FusedLocation GPS + reload geofence.
+             Alasan: Vendor Xiaomi/OPPO/Realme/Vivo/Samsung kadang menghapus schedule worker saat reboot.
+             exported=true & enabled=true WAJIB supaya OS bisa memanggil receiver ini saat boot.
+             RECEIVE_BOOT_COMPLETED permission sudah ada L23. -->
+        <receiver
+            android:name="com.example.data.work.BootCompletedReceiver"
+            android:enabled="true"
+            android:exported="true"
+            android:directBootAware="false">
+            <intent-filter android:priority="100">
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <!-- ACTION_LOCKED_BOOT_COMPLETED: Direct boot mode device terenkripsi sebelum user unlock pertama -->
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+                <!-- ACTION_MY_PACKAGE_REPLACED: app di-upgrade via Play Store / Sideload (versi code berubah) → reschedule workers. -->
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </receiver>
         <!-- (AV6 LIVE GPS 30mnt FOREGOUND) Foreground Service type=location sticky.
              Diaktifkan saat user dashboard klik tombol Live GPS (via FCM push forceFastMode).
              Menampilkan permanent notification tray → Android TIDAK AKAN MEMATIKAN update GPS walau layar terkunci / Doze ringan.
