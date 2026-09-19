@@ -249,7 +249,7 @@ export const GoogleMapsMonitorCanvas: React.FC<GoogleMapsMonitorCanvasProps> = (
             );
           })}
 
-          {/* InfoWindow for Clicked Child Marker */}
+          {/* InfoWindow for Clicked Child Marker (RAPI UI CUSTOM VERSION) */}
           {selectedMarkerChild && (
             <InfoWindow
               position={{
@@ -257,53 +257,148 @@ export const GoogleMapsMonitorCanvas: React.FC<GoogleMapsMonitorCanvasProps> = (
                 lng: selectedMarkerChild.longitude
               }}
               onCloseClick={() => setSelectedMarkerChild(null)}
+              // Minimize default gm padding agar border radius + shadow custom tampil sempurna
+              pixelOffset={new google.maps.Size(0, -28)}
+              zIndex={9999}
             >
-              <div className="p-1 max-w-xs text-slate-800 space-y-1.5 text-left">
-                <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-1">
-                  <div className="flex items-center gap-1.5">
-                    <img
-                      src={selectedMarkerChild.avatar}
-                      alt={selectedMarkerChild.name}
-                      className="w-5 h-5 rounded-full object-cover ring-1 ring-slate-300"
-                    />
-                    <span className="text-xs font-medium text-slate-900">
+              <div className="min-w-[260px] max-w-[300px] p-0 text-slate-800 bg-transparent select-none pointer-events-auto">
+                {/* HEADER: Avatar + Nama + Status Badge */}
+                <div className="relative flex items-center gap-3 p-3 pb-2.5 bg-gradient-to-br from-indigo-50 via-white to-slate-50 dark:from-slate-800 dark:via-slate-900 dark:to-slate-950 rounded-t-2xl border-b border-slate-200/80 dark:border-slate-700/60">
+                  {/* Avatar dengan ring status glow */}
+                  <div className="relative shrink-0">
+                    <div className={`absolute -inset-1 rounded-full blur-sm opacity-70 transition-all ${selectedMarkerChild.isOnline ? 'bg-emerald-400/40 animate-pulse' : 'bg-slate-400/30'}`} />
+                    <div className={`relative w-11 h-11 rounded-full ring-2 overflow-hidden ${selectedMarkerChild.isOnline ? 'ring-emerald-400' : 'ring-slate-400'}`}>
+                      <img
+                        src={selectedMarkerChild.avatar}
+                        alt={selectedMarkerChild.name}
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                    {/* Status dot absolute */}
+                    <span className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full ring-2 ring-white dark:ring-slate-900 ${selectedMarkerChild.isOnline ? 'bg-emerald-500 animate-ping' : 'bg-slate-500'}`} />
+                  </div>
+                  {/* Nama + Status Pill */}
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold text-sm text-slate-900 dark:text-white truncate mb-1">
                       {selectedMarkerChild.name}
+                    </div>
+                    <span
+                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide ${
+                        selectedMarkerChild.isOnline
+                          ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400 border border-emerald-200/70 dark:border-emerald-800/50'
+                          : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 border border-slate-200/70 dark:border-slate-700/50'
+                      }`}
+                    >
+                      <span className={`w-1.5 h-1.5 rounded-full ${selectedMarkerChild.isOnline ? 'bg-emerald-500' : 'bg-slate-500'}`} />
+                      {selectedMarkerChild.isOnline ? 'Online' : 'Offline'}
                     </span>
                   </div>
-                  <span className={`px-1.5 py-0.2 rounded text-[9px] font-medium uppercase ${
-                    selectedMarkerChild.isOnline
-                      ? 'bg-emerald-50 text-emerald-600'
-                      : 'bg-slate-100 text-slate-500'
-                  }`}>
-                    {selectedMarkerChild.isOnline ? 'Online' : 'Offline'}
-                  </span>
                 </div>
 
-                <div className="text-[11px] font-normal text-slate-600 space-y-1">
-                  <div className="flex items-center justify-between">
-                    <span>Perangkat:</span>
-                    <span className="font-medium text-slate-800 truncate max-w-[130px]">
-                      {selectedMarkerChild.deviceModel}
-                    </span>
+                {/* BODY: GRID 2 Kolom — ICON + LABEL + VALUE */}
+                <div className="bg-white dark:bg-slate-900 p-3 space-y-2.5 rounded-b-2xl">
+                  {/* Row 1: Smartphone (Perangkat) */}
+                  <div className="flex items-start gap-2.5">
+                    <div className="shrink-0 w-7 h-7 rounded-lg bg-indigo-50 dark:bg-indigo-950/50 flex items-center justify-center text-indigo-600 dark:text-indigo-400 mt-0.5">
+                      <Smartphone className="w-3.5 h-3.5" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[10px] font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-0.5">
+                        Perangkat
+                      </div>
+                      <div className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate" title={selectedMarkerChild.deviceModel}>
+                        {selectedMarkerChild.deviceModel || '—'}
+                      </div>
+                    </div>
                   </div>
-                  <div className="flex items-center justify-between">
-                    <span>Lokasi:</span>
-                    <span className="font-medium text-slate-800">
-                      {selectedMarkerChild.locationName}
-                    </span>
+
+                  {/* Row 2: Battery — DENGAN WARNA DINAMIS + PROGRESS BAR MINI */}
+                  {(() => {
+                    const bat = Number(selectedMarkerChild.battery ?? 0);
+                    let batColor = 'emerald';
+                    if (bat < 20) batColor = 'rose';
+                    else if (bat < 50) batColor = 'amber';
+                    const colorMap = {
+                      emerald: { text: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-950/50', bar: 'bg-gradient-to-r from-emerald-400 to-emerald-500' },
+                      amber:   { text: 'text-amber-600 dark:text-amber-400',     bg: 'bg-amber-50 dark:bg-amber-950/50',     bar: 'bg-gradient-to-r from-amber-400 to-amber-500' },
+                      rose:    { text: 'text-rose-600 dark:text-rose-400',       bg: 'bg-rose-50 dark:bg-rose-950/50',       bar: 'bg-gradient-to-r from-rose-400 to-rose-500 animate-pulse' },
+                    } as const;
+                    const c = colorMap[batColor as keyof typeof colorMap];
+                    return (
+                      <div className="flex items-center gap-2.5">
+                        <div className={`shrink-0 w-7 h-7 rounded-lg flex items-center justify-center mt-0.5 ${c.bg} ${c.text}`}>
+                          <Battery className="w-3.5 h-3.5" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between mb-1">
+                            <div className="text-[10px] font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+                              Baterai
+                            </div>
+                            <div className={`text-xs font-bold ${c.text}`}>
+                              {bat > 0 ? `${bat}%` : '—'}
+                            </div>
+                          </div>
+                          {bat > 0 && (
+                            <div className="h-1.5 w-full rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+                              <div className={`h-full rounded-full transition-all duration-700 ${c.bar}`} style={{ width: `${Math.min(100, Math.max(0, bat))}%` }} />
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Row 3: Location (GPS Coord) — TANPA NOTES */}
+                  <div className="flex items-start gap-2.5">
+                    <div className="shrink-0 w-7 h-7 rounded-lg bg-rose-50 dark:bg-rose-950/50 flex items-center justify-center text-rose-600 dark:text-rose-400 mt-0.5">
+                      <MapPin className="w-3.5 h-3.5" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[10px] font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-0.5">
+                        Lokasi
+                      </div>
+                      <div className="text-xs font-semibold text-slate-800 dark:text-slate-200 break-all leading-tight">
+                        {selectedMarkerChild.locationName}
+                      </div>
+                    </div>
                   </div>
-                  <div className="flex items-center justify-between">
-                    <span>Baterai:</span>
-                    <span className="font-medium text-slate-800">{selectedMarkerChild.battery}%</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span>Update:</span>
-                    <span className="font-medium text-slate-800">{selectedMarkerChild.lastUpdated}</span>
-                  </div>
-                  <div className="text-[10px] text-slate-400 pt-0.5">
-                    Koordinat: {selectedMarkerChild.latitude.toFixed(5)}, {selectedMarkerChild.longitude.toFixed(5)}
+
+                  {/* Row 4: Last Updated Relative Time */}
+                  <div className="flex items-center gap-2.5">
+                    <div className="shrink-0 w-7 h-7 rounded-lg bg-sky-50 dark:bg-sky-950/50 flex items-center justify-center text-sky-600 dark:text-sky-400 mt-0.5">
+                      <Clock className="w-3.5 h-3.5" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[10px] font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-0.5">
+                        Update Terakhir
+                      </div>
+                      <div className={`text-xs font-bold ${selectedMarkerChild.isOnline ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-700 dark:text-slate-300'}`}>
+                        {selectedMarkerChild.lastUpdated}
+                      </div>
+                    </div>
                   </div>
                 </div>
+
+                {/* FOOTER: Koordinat Raw + Copy Clipboard — MUTED SMALL */}
+                {(Math.abs(Number(selectedMarkerChild.latitude)) > 0.001 || Math.abs(Number(selectedMarkerChild.longitude)) > 0.001) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const txt = `${Number(selectedMarkerChild.latitude).toFixed(6)}, ${Number(selectedMarkerChild.longitude).toFixed(6)}`;
+                      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+                        navigator.clipboard.writeText(txt).catch(() => {});
+                      }
+                    }}
+                    className="w-full mt-1 px-3 py-1.5 bg-slate-50/80 dark:bg-slate-800/60 hover:bg-slate-100 dark:hover:bg-slate-700/60 border-t border-slate-200/50 dark:border-slate-700/40 rounded-b-2xl text-[10px] font-mono text-slate-500 dark:text-slate-400 text-left transition-colors cursor-pointer flex items-center justify-between group"
+                    title="Klik untuk copy koordinat ke clipboard"
+                  >
+                    <span>
+                      {Number(selectedMarkerChild.latitude).toFixed(6)},{' '}
+                      {Number(selectedMarkerChild.longitude).toFixed(6)}
+                    </span>
+                    <Check className="w-3 h-3 opacity-0 group-hover:opacity-100 text-emerald-600 dark:text-emerald-400 transition-opacity ml-2 shrink-0" />
+                  </button>
+                )}
               </div>
             </InfoWindow>
           )}

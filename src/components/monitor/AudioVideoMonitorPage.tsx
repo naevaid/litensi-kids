@@ -98,11 +98,13 @@ const mapDbAnakToChildDeviceMonitor = (db: any): ChildDeviceMonitor => {
   const latitude = hasGps ? lat : 0;
   const longitude = hasGps ? lng : 0;
 
-  // (G4.2 ZERO HARDCODE) Location Name — DARI DB.notes JIKA ADA. JIKA TIDAK → "Menunggu data GPS" JANGAN hardcode "Rumah".
-  const notesTrim = (db.notes ?? '').toString().trim();
-  const locationName = notesTrim.length > 0
-    ? notesTrim
-    : (hasGps ? `GPS: ${latitude.toFixed(5)}, ${longitude.toFixed(5)}` : 'Menunggu data GPS pertama');
+  // (FIX UI: User minta JANGAN tampilkan data kolom notes di UI marker/card.)
+  // Location name SELALU tampilkan raw GPS coordinate lat,lng jika data GPS ada,
+  // atau "Menunggu data GPS pertama" jika GPS belum upload.
+  // Notes (catatan internal orang tua) TIDAK PERNAH ditampilkan di marker / card UI.
+  const locationName = hasGps
+    ? `GPS: ${latitude.toFixed(5)}, ${longitude.toFixed(5)}`
+    : 'Menunggu data GPS pertama';
 
   // isLocked dari db.status locked flag.
   const isLocked = Boolean((db.status === 'locked') || (db.is_locked ?? false));
