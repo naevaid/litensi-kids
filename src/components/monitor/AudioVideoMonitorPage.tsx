@@ -509,8 +509,12 @@ export const AudioVideoMonitorPage: React.FC<AudioVideoMonitorPageProps> = ({ sh
     isOnline: false,
     status: 'Loading',
     locationName: 'Menunggu data dari database...',
-    latitude: -6.1924,
-    longitude: 106.8331,
+    // (RULE #1 EXTENDED ZERO HARDCODE) PLACEHOLDER CAMERA MONITOR:
+    // JANGAN ADA HARDCODE KOORDINAT JAKARTA / KOTA APA PUN PALSU!
+    // Set ke 0,0 Null Island (Tengah Samudra Atlantik) → user PASTI TAU ini TIDAK data asli = TIDAK menyesatkan.
+    // Map akan AUTO Pindah ke lokasi asli SEGERA SETELAH list anak dari server berhasil ter-load.
+    latitude: 0,
+    longitude: 0,
     lastUpdated: '-',
     isLocked: false,
   });

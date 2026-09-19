@@ -248,12 +248,20 @@ class LitensiFirebaseMessagingService : FirebaseMessagingService() {
                     }
                     if (needSyncProfile) {
                         runCatching {
-                            repository.syncChildProfileFromServer(
-                                anakId = anakId,
-                                currentChildProfileId = currentChild?.id ?: 1,
-                                currentPoints = currentChild?.points ?: 0
-                            )
-                            Log.i(TAG, "FCM sync (P1 ✅): Profil Anak id=$anakId di-refresh via AN4 endpoint (kuota/battery/online state).")
+                            // RULE #1 ZERO HARDCODE: JANGAN fallback currentChild?.id ?: 1 (bisa salah sync ke anak id=1 MILIK ORANG LAIN!)
+                            // Jika currentChild NULL (blum pernah pairing sama sekali / user unpair baru) → SKIP sync (tidak ada Room entity yang perlu di-update).
+                            val currentId = currentChild?.id
+                            if (currentId == null) {
+                                Log.w(TAG, "FCM sync Profile SKIP: currentChild.id=NULL (blm pairing / entity Room blm ada). Tunggu pairing dulu sebelum sync.")
+                            } else {
+                                repository.syncChildProfileFromServer(
+                                    anakId = anakId,
+                                    currentChildProfileId = currentId,
+                                    // currentPoints JANGAN hardcode 0 fallback PALSU! Pakai nilai lokal yang ada jika tidak null → jika tetap null pake DEFAULT parameter function (0 internal).
+                                    currentPoints = currentChild?.points ?: 0
+                                )
+                                Log.i(TAG, "FCM sync (P1 ✅): Profil Anak id=$anakId di-refresh via AN4 endpoint (kuota/battery/online state).")
+                            }
                         }.onFailure { err ->
                             Log.e(TAG, "FCM sync Profile GAGAL (non-fatal, retry next sync): ${err.message}", err)
                         }

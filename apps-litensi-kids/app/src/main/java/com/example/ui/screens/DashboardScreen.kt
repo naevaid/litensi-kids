@@ -330,7 +330,9 @@ fun DashboardScreen(
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(
-                                    text = "Baterai: ${childProfile?.batteryLevel ?: 88}%",
+                                    // RULE #1 ZERO HARDCODE: JANGAN ADA FALLBACK ANGKA APAPUN (misal 88%)!
+                                    // Jika batteryLevel null → tampilkan -- (menunggu data dari server)
+                                    text = "Baterai: ${childProfile?.batteryLevel?.let { "${it}%" } ?: "--"}",
                                     style = MaterialTheme.typography.bodySmall.copy(
                                         color = Color(0xFF475569),
                                         fontWeight = FontWeight.Medium,
@@ -368,7 +370,9 @@ fun DashboardScreen(
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(
-                                    text = "${childProfile?.points ?: 250} Poin",
+                                    // RULE #1 ZERO HARDCODE: JANGAN ADA FALLBACK ANGKA 250 PALSU!
+                                    // Jika points null → tampilkan "-- Poin" (menunggu sync data)
+                                    text = "${childProfile?.points?.toString() ?: "--"} Poin",
                                     style = MaterialTheme.typography.bodySmall.copy(
                                         color = AmberGold,
                                         fontWeight = FontWeight.Bold,
