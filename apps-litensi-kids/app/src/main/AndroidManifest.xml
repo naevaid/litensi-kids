@@ -11,6 +11,12 @@
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" tools:ignore="ProtectedPermissions" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- Permission FOREGOUND SERVICE WAJIB (mode Live GPS 5s agar tetap kirim walau layar terkunci / Doze ringan) -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <!-- (Android 14 SDK 34+) FOREGROUND_SERVICE_LOCATION WAJIB jika foregroundServiceType="location" di service -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <!-- WAKE_LOCK: Agar CPU tetap bangun sebentar tiap 5 detik interval upload GPS (tidak deep sleep CPU) -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
     <!-- (G3.9) Permission untuk GPS tracking background (SDK 29+ Android 10+) → user harus pilih "Allow all the time" -->
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
     <!-- Permission agar GPS worker restart otomatis setelah HP di-reboot (nanti BOOT_COMPLETED Receiver) -->
@@ -43,6 +49,15 @@
         <receiver
             android:name="com.example.data.location.GeofenceEventReceiver"
             android:exported="false" />
+        <!-- (AV6 LIVE GPS 30mnt FOREGOUND) Foreground Service type=location sticky.
+             Diaktifkan saat user dashboard klik tombol Live GPS (via FCM push forceFastMode).
+             Menampilkan permanent notification tray → Android TIDAK AKAN MEMATIKAN update GPS walau layar terkunci / Doze ringan.
+             Di-stop otomatis saat forceFast expire (30 menit habis) / user unpair / app exit. -->
+        <service
+            android:name="com.example.data.location.LiveGpsForegroundService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="location" />
         <activity
             android:name="com.example.MainActivity"
             android:exported="true"

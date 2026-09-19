@@ -83,9 +83,11 @@ object GPSLocationManager {
     // - Jangan ubah PeriodicWorkManager < 15 menit (risiko di-throttle Play Protect + boros baterai permanen).
     // - LEBIH CERDAS: TEMPORER force masuk FAST MODE via FCM push trigger saat user BENAR-BENAR
     //   sedang memantau (klik tombol). Setelah expire, revert otomatis ke adaptive normal hemat baterai.
-    private const val PREFS_NAME = "litensi_gps_location_prefs"
-    private const val KEY_FORCE_FAST_UNTIL_MS = "force_fast_until_ms" // Long: System time millisecond saat mode expire
-    private const val KEY_FORCE_FAST_INTERVAL_MS = "force_fast_interval_ms" // Long: Interval yang diinginkan user (default 5000ms)
+    // Constant di-EXPOSE internal package agar LiveGpsForegroundService bisa baca SharedPrefs
+    // untuk menampilkan sisa durasi & interval di notifikasi tray (bukan private!).
+    const val PREFS_NAME = "litensi_gps_location_prefs"
+    const val KEY_FORCE_FAST_UNTIL_MS = "force_fast_until_ms" // Long: System time millisecond saat mode expire
+    const val KEY_FORCE_FAST_INTERVAL_MS = "force_fast_interval_ms" // Long: Interval yang diinginkan user (default 5000ms)
 
     // Track last mode (STATIONARY / FAST) & last ProfilAnakId untuk adaptive switch.
     enum class GpsMode { STATIONARY, FAST }
@@ -117,6 +119,8 @@ object GPSLocationManager {
     // (G5 Helper) Build LocationRequest sesuai MODE saat ini.
     // UPDATE AV6: JIKA SharedPrefs FORCE_FAST_UNTIL_MS > waktu sekarang → PAKAI CUSTOM INTERVAL
     //   (abaikan normal STATIONARY/FAST mode — user dari dashboard web minta realtime tracking temporer).
+    // UPDATE FIX LOCKED SCREEN: JIKA force expire → otomatis panggil stopForegroundServiceIfRunning()
+    //   agar notif tray hilang dan hemat baterai kembali.
     private fun buildLocationRequestFor(mode: GpsMode, ctx: Context? = null): LocationRequest {
         // ========== [AV6 LIVE GPS PUSH TRIGGER] ==========
         val now = System.currentTimeMillis()
@@ -125,7 +129,21 @@ object GPSLocationManager {
             val prefs = ctxPrefs.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             val until = prefs.getLong(KEY_FORCE_FAST_UNTIL_MS, 0L)
             val interval = prefs.getLong(KEY_FORCE_FAST_INTERVAL_MS, 5_000L)
-            (until > now) to interval
+            if (until > now) {
+                true to interval
+            } else {
+                // FORCE EXPIRE: Jika sampai disini until <= now tapi SharedPrefs masih ada nilainya →
+                //   clear prefs + STOP FOREGROUND SERVICE jika jalan (notif tray dihapus user).
+                if (until > 0L) {
+                    prefs.edit()
+                        .remove(KEY_FORCE_FAST_UNTIL_MS)
+                        .remove(KEY_FORCE_FAST_INTERVAL_MS)
+                        .apply()
+                    Log.i(TAG, "[LIVE GPS FORCE MODE EXPIRED] untilMs($until) <= now($now) → Clear prefs + stop foreground service.")
+                    stopForegroundServiceIfRunning(ctxPrefs)
+                }
+                false to 5_000L
+            }
         } else {
             false to 5_000L
         }
@@ -371,7 +389,17 @@ object GPSLocationManager {
     }
 
     // Hentikan request update lokasi. Dipanggil saat unpair/disconnect atau app destroy.
+    // FIX: Juga STOP foreground service jika sedang berjalan → notif tray hilang & batere tidak terkuras permanen.
     fun removeUpdates(context: Context) {
+        // Stop foreground service DULU sebelum hapus callback (jika ada).
+        stopForegroundServiceIfRunning(context)
+        // Juga clear SharedPrefs force mode jika ada (hapus semua key force).
+        runCatching {
+            context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
+                .remove(KEY_FORCE_FAST_UNTIL_MS)
+                .remove(KEY_FORCE_FAST_INTERVAL_MS)
+                .apply()
+        }
         val client = fusedLocationClient
         val callback = locationCallback
         if (client != null && callback != null) {
@@ -397,6 +425,45 @@ object GPSLocationManager {
         supervisorJob = SupervisorJob()
     }
 
+    // (AV6 FIX LOCKED SCREEN) Dipanggil oleh LiveGpsForegroundService.onCreate saat service start ulang
+    // → rebuild location request dan restart fusedLocation client request agar Play Services tahu
+    //   ada foreground service yang berjalan → TIDAK kill GPS update saat screen off.
+    fun restartLocationRequestJikaAktif(ctx: Context) {
+        val client = fusedLocationClient
+        val callback = locationCallback
+        if (client == null || callback == null) {
+            Log.w(TAG, "restartLocationRequestJikaAktif: client/callback BELUM ADA (GPS belum start pairing). Skip restart.")
+            return
+        }
+        val appCtx = ctx.applicationContext
+        appContext = appCtx
+        runCatching { client.removeLocationUpdates(callback) }
+        val newReq = buildLocationRequestFor(currentMode, appCtx)
+        runCatching {
+            client.requestLocationUpdates(newReq, callback, appCtx.mainLooper)
+        }.onSuccess {
+            Log.i(TAG, "restartLocationRequestJikaAktif: ✅ Location request di-restart ulang dengan foreground context (screen off aman).")
+        }.onFailure { err ->
+            Log.e(TAG, "restartLocationRequestJikaAktif FAIL: ${err.message}")
+        }
+    }
+
+    // Helper: Start foreground service (jika belum berjalan). Dipanggil forceFastMode.
+    private fun startForegroundService(ctx: Context) {
+        val appCtx = ctx.applicationContext
+        runCatching { LiveGpsForegroundService.start(appCtx) }
+            .onSuccess { Log.i(TAG, "startForegroundService: dipanggil.") }
+            .onFailure { err -> Log.e(TAG, "startForegroundService GAGAL: ${err.message}") }
+    }
+
+    // Helper: Stop foreground service (jika sedang berjalan). Dipanggil saat force expire / removeUpdates.
+    private fun stopForegroundServiceIfRunning(ctx: Context) {
+        val appCtx = ctx.applicationContext
+        runCatching { LiveGpsForegroundService.stop(appCtx) }
+            .onSuccess { Log.i(TAG, "stopForegroundServiceIfRunning: dipanggil.") }
+            .onFailure { err -> Log.w(TAG, "stopForegroundServiceIfRunning warning: ${err.message}") }
+    }
+
     // ============================================================
     // [AV6 LIVE GPS 30D] PUBLIC API FOR FCM HANDLER!
     // Dipanggil dari LitensiFirebaseMessagingService saat menerima push data payload event_type=request_gps_fast.
@@ -406,6 +473,8 @@ object GPSLocationManager {
      * Setelah duration expire otomatis kembali ke MODE normal adaptive (STATIONARY diam / FAST bergerak).
      * TIDAK MELANGGAR batas 15 menit Periodic WorkManager karena ini LocationRequest satu-satunya bukan
      * WorkManager periodic yang dicek Play Protect Policy! Aman.
+     * FIX LOCKED SCREEN: Sebelum start GPS, STARTS FOREGROUND SERVICE (notification tray) agar
+     *   Android tidak mematikan update GPS saat layar terkunci / Doze ringan.
      */
     fun forceFastMode(
         ctx: Context,
@@ -417,6 +486,10 @@ object GPSLocationManager {
 
         val durasiMs = durationMinutes.toLong() * 60L * 1000L
         val untilMs = System.currentTimeMillis() + durasiMs
+
+        // Step 0 (FIX LOCKED SCREEN PALING PENTING): Start FOREGROUND SERVICE type=location NOTIF PERMANEN
+        // → Android PRIORITAS TINGGI, TIDAK akan kill GPS walau layar off 30 MENIT PENUH!
+        startForegroundService(ctx)
 
         // Step 1: Simpan ke SharedPrefs (buildLocationRequestFor akan check setiap di build,
         // juga ketika app restart / GPSLocationManager requestLocationUpdates dipanggil ulang).
