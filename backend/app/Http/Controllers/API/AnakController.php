@@ -638,12 +638,25 @@ class AnakController extends Controller
         // PENTING: last_gps_captured_at diisi DARI VALUE CAPTURED AT HP (bukan now() server!)
         //          agar waktu snapshot sesuai dengan waktu penangkapan sinyal GPS di perangkat.
         //          last_active = now() server waktu untuk status "terakhir kali terhubung".
-        $anak->update([
+        // (FIX MONITOR 1) Update battery_level TIAP KALI GPS upload:
+        //   SEBELUMNYA battery hanya di-update oleh TelemetryWorker 15 menit.
+        //   Karena GPS Expedited upload sekarang MAX LATENCY 5 DETIK, jauh lebih sering
+        //   jalan daripada Telemetry 15m → update battery disini LEBIH REALTIME
+        //   dan UI Monitor/Dashboard selalu menampilkan battery_level AKTUAL dari HP,
+        //   BUKAN nilai LAMA dari pairing / telemetry lama (64% vs 80% bug).
+        // CATATAN ZERO ASSUMPTION: Field battery_level PASTI ADA di tabel profil_anak
+        //   (migration G0 ProfilAnak). Field accuracy/altitude/mock last TIDAK ADA migration
+        //   jadi TIDAK di-update disini (hindari SQL error column unknown).
+        $anakUpdate = [
             'last_known_latitude' => $newLat,
             'last_known_longitude' => $newLng,
             'last_gps_captured_at' => $capturedAt,
             'last_active' => now(),
-        ]);
+        ];
+        if ($batteryLevel !== null) {
+            $anakUpdate['battery_level'] = $batteryLevel;
+        }
+        $anak->update($anakUpdate);
 
         // (G2.2 STEP 3) Hitung jarak dari titik GPS sebelumnya ke titik baru via Haversine (dalam meter)
         $distanceMeters = 0;

@@ -122,6 +122,50 @@ export const GoogleMapsMonitorCanvas: React.FC<GoogleMapsMonitorCanvasProps> = (
     }
   }, [activeChild.id, activeChild.latitude, activeChild.longitude]);
 
+  // (FIX MONITOR 2) SINKRONISASI STATE selectedMarkerChild DENGAN DATA POLLING TERBARU:
+  // SEBELUMNYA: selectedMarkerChild = STATE SNAPSHOT yang disimpan SAAT KLIK MARKER.
+  //   Setelah polling refresh data (tiap 5s), activeChild (top left floating card) menampilkan
+  //   lastUpdated TERBARU (mis "5 mnt lalu"), tapi InfoWindow marker tetap menampilkan
+  //   selectedMarkerChild.state KLIK AWAL (mis "11 mnt lalu"). → KLIK USER BINGUNG beda timestamp
+  //   card vs tooltip marker.
+  // SOLUSI: useEffect dependency = [activeChild, childrenList]. Setiap childrenList berubah
+  //   (polling selesai) atau activeChild berubah (dipilih via dropdown/marker),
+  //   JIKA selectedMarkerChild ada dan ID-nya MATCH → UPDATE state selectedMarkerChild
+  //   dengan DATA TERBARU dari childrenList polling (bukan snapshot lama).
+  useEffect(() => {
+    if (!selectedMarkerChild) return;
+    // Prioritas 1: activeChild.id sama dengan selectedMarkerChild.id → pakai activeChild (pasti terbaru polling)
+    if (activeChild?.id && activeChild.id === selectedMarkerChild.id) {
+      // Hanya update jika ada field lastUpdated yang berbeda (hindari re-render tak perlu)
+      if (
+        activeChild.lastUpdated !== selectedMarkerChild.lastUpdated ||
+        activeChild.battery !== selectedMarkerChild.battery ||
+        activeChild.status !== selectedMarkerChild.status ||
+        activeChild.latitude !== selectedMarkerChild.latitude ||
+        activeChild.longitude !== selectedMarkerChild.longitude ||
+        activeChild.locationName !== selectedMarkerChild.locationName
+      ) {
+        setSelectedMarkerChild(activeChild);
+      }
+      return;
+    }
+    // Prioritas 2: selected bukan active tapi ada di childrenList (ada marker lain yang diklik user)
+    // → cari di childrenList polling terbaru dengan ID match → update value latest
+    const latestFromPoll = childrenList?.find((c: ChildDeviceMonitor) => c.id === selectedMarkerChild.id);
+    if (latestFromPoll) {
+      if (
+        latestFromPoll.lastUpdated !== selectedMarkerChild.lastUpdated ||
+        latestFromPoll.battery !== selectedMarkerChild.battery ||
+        latestFromPoll.isOnline !== selectedMarkerChild.isOnline ||
+        latestFromPoll.latitude !== selectedMarkerChild.latitude ||
+        latestFromPoll.longitude !== selectedMarkerChild.longitude
+      ) {
+        setSelectedMarkerChild(latestFromPoll);
+      }
+    }
+  // Dependensi SEMUA trigger polling: anak aktif diganti (top card) ATAU list semua anak di-refresh
+  }, [activeChild, childrenList, selectedMarkerChild?.id]);
+
   const handleCenterOnActiveChild = () => {
     setTargetCamera({
       lat: activeChild.latitude,
