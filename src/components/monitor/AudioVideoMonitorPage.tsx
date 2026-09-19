@@ -62,37 +62,70 @@ const avatarToImageUrl = (avatarStr: string, sizePx: number = 80): string => {
 };
 
 // Mapping dari DB ProfilAnak (snake_case) → ChildDeviceMonitor interface untuk dropdown + Google Maps
+// (G4.2 ZERO HARDCODE RULE) — SEMUA FIELD DIAMBIL DARI DB LAST_KNOWN_*, TIDAK BOLEH ADA FALLBACK HARCODE COORDINATE APA PUN!
+//   JIKA last_known_latitude/longitude BELUM ADA (null = GPS companion belum pernah upload) →
+//     marker GPS akan grey (isOnline=false + latitude=0, longitude=0) dan text "Menunggu data GPS pertama"
+//     agar user TAHU bahwa perangkat anak belum mengirimkan data GPS realtime — BUKAN di-fallback ke Jakarta Monas palsu!
 const mapDbAnakToChildDeviceMonitor = (db: any): ChildDeviceMonitor => {
-  const ageNum = Number(db.age ?? 8);
+  const ageNum = Number(db.age ?? 0);
   const deviceName = db.device_name ?? db.deviceName ?? 'Perangkat Anak';
   const model = db.device_model ?? db.deviceModel ?? '';
   const os = db.os_version ?? db.osVersion ?? '';
   const modelStr = model && os ? `${model} (${os})` : (model || deviceName || '-');
-  const battery = Number(db.battery_level ?? db.batteryLevel ?? 50);
+
+  // (G4.2 FIX) Battery LEVEL dari DB ProfilAnak.battery_level (di-update setiap telemetry worker 15min).
+  //   TIDAK ADA fallback 50. JIKA null/unknown → 0 (akan ditampilkan sebagai ?% di UI, atau 0% unknown).
+  const battery = Number(db.battery_level ?? db.batteryLevel ?? 0);
+
+  // (G4.2 FIX) IsOnline = db.is_online dari telemetry update last_active <2 menit.
   const isOnline = Boolean(db.is_online ?? db.isOnline ?? false);
-  const lastActive = db.last_active
-    ? (Date.now() - new Date(db.last_active).getTime() < 60_000
+
+  // (G4.2 FIX) Last updated time = LAST_GPS_CAPTURED_AT (waktu HP capture GPS di perangkat anak) BUKAN fallback.
+  //   JIKA last_gps_captured_at ADA → pakai itu (akurat! bukan waktu server).
+  //   JIKA TIDAK ADA → pakai last_active (jika ada).
+  //   JIKA KEDUANYA NULL → "Menunggu data GPS pertama" (user tahu companion belum upload sama sekali).
+  const capturedAtIso = db.last_gps_captured_at ?? db.last_active ?? null;
+  const hasAnyTimestamp = capturedAtIso != null && String(capturedAtIso).trim().length > 0;
+  const lastUpdated = hasAnyTimestamp
+    ? (Date.now() - new Date(capturedAtIso).getTime() < 60_000
         ? 'Baru saja'
-        : `${Math.max(1, Math.round((Date.now() - new Date(db.last_active).getTime()) / 60_000))} mnt lalu`)
-    : 'Baru saja';
-  // Default lokasi sekitar Jakarta (sesuaikan dengan data DB jika ada geofence nanti)
-  const latDefault = -6.1924;
-  const lngDefault = 106.8331;
-  const locOffset = (Number(db.id ?? 0) % 5) * 0.002;
+        : `${Math.max(1, Math.round((Date.now() - new Date(capturedAtIso).getTime()) / 60_000))} mnt lalu`)
+    : 'Menunggu data GPS pertama';
+
+  // (G4.2 ZERO HARDCODE) AMBIL LAT/LNG DARI last_known_latitude / last_known_longitude — HANYA field INI SAJA source of truth.
+  //   TIDAK BOLEH ada default latDefault / lngDefault apapun (tidak boleh hardcode Jakarta Monas / Semarang / anywhere).
+  //   JIKA null → set ke 0,0 (Null Island di tengah Samudra Atlantik) → jelas bagi user marker abu-abu = BELUM ADA DATA GPS,
+  //   BUKAN menunjukkan lokasi PALSU yang menyesatkan.
+  const lastLatRaw = db.last_known_latitude ?? db.lastKnownLatitude ?? db.latitude ?? null;
+  const lastLngRaw = db.last_known_longitude ?? db.lastKnownLongitude ?? db.longitude ?? null;
+  const hasGps = lastLatRaw != null && lastLngRaw != null && !isNaN(Number(lastLatRaw)) && !isNaN(Number(lastLngRaw));
+  const latitude = hasGps ? Number(lastLatRaw) : 0;
+  const longitude = hasGps ? Number(lastLngRaw) : 0;
+
+  // (G4.2 ZERO HARDCODE) Location Name — DARI DB.notes JIKA ADA. JIKA TIDAK → "Menunggu data GPS" JANGAN hardcode "Rumah".
+  const notesTrim = (db.notes ?? '').toString().trim();
+  const locationName = notesTrim.length > 0
+    ? notesTrim
+    : (hasGps ? `GPS: ${latitude.toFixed(5)}, ${longitude.toFixed(5)}` : 'Menunggu data GPS pertama');
+
+  // isLocked dari db.status locked flag.
+  const isLocked = Boolean((db.status === 'locked') || (db.is_locked ?? false));
+
   return {
     id: String(db.id ?? `child-${Date.now()}`),
     name: db.name ?? 'Anak',
-    age: `${ageNum} thn`,
+    age: ageNum > 0 ? `${ageNum} thn` : '-',
     avatar: avatarToImageUrl(db.avatar ?? 'icon:Smile', 128),
     deviceModel: modelStr,
     battery,
-    isOnline,
-    status: isOnline ? `Live • ${lastActive}` : 'Offline',
-    locationName: db.notes?.trim() || 'Rumah (Area Aman)',
-    latitude: Number(db.latitude ?? latDefault + locOffset),
-    longitude: Number(db.longitude ?? lngDefault + locOffset),
-    lastUpdated: lastActive,
-    isLocked: Boolean((db.status === 'locked') || (db.is_locked ?? false)),
+    // (G4.2 FIX) isOnline DI-AND-kan hasGps juga: JIKA GPS belum pernah upload → walau last_active baru = OFFLINE abu-abu (agar user tidak tertipu "Online" tapi marker tidak ada GPS)
+    isOnline: isOnline && hasGps,
+    status: hasGps ? (isOnline ? `Live • ${lastUpdated}` : `Offline • ${lastUpdated}`) : `GPS Belum Tersedia • ${lastUpdated}`,
+    locationName,
+    latitude,
+    longitude,
+    lastUpdated,
+    isLocked,
   };
 };
 
@@ -248,6 +281,81 @@ export const AudioVideoMonitorPage: React.FC<AudioVideoMonitorPageProps> = ({ sh
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // =========================================================================
+  // (G4.3) POLLING GPS REALTIME — Refresh marker maps SETIAP 15 DETIK otomatis.
+  //   Alasan 15 detik: GPSUploadWorker companion flush ke backend setiap 15 menit,
+  //     DAN jika ada geofence event → expedited OneTimeWork upload dalam 2-5 detik.
+  //     15 detik polling = maksimal 15 detik lag setelah GPS di-upload ke DB → maps web ter-update.
+  //   Polling JUGA call loadKuotaFromApi (biar kuota AV Monitor realtime, tanpa manual refresh page).
+  //   Toast warning HANYA MUNCUL SEKALI jika GPS > 2 MENIT pertama MASIH BELUM ADA DATA
+  //     (menandakan GPSUploadWorker companion BELUM pernah berhasil flush ke backend).
+  // =========================================================================
+  useEffect(() => {
+    let pollIntervalId: NodeJS.Timeout | null = null;
+    let warningGpsFirstShown = false;
+    const POLL_INTERVAL_MS = 15 * 1000; // 15 detik
+    const GPS_WARN_THRESHOLD_MS = 2 * 60 * 1000; // 2 menit pertama → warn kalau GPS belum ada
+
+    // Waktu MOUNT component = acuan "awal user masuk ke halaman monitor nunggu GPS"
+    const mountTimestampMs = Date.now();
+
+    // Jalankan poll SEGERA sekali pertama tidak tunggu 15 detik (data terbaru langsung ada)
+    const runPoll = async () => {
+      try {
+        // 1. Refresh list anak + GPS last_known
+        await loadChildrenFromApi();
+
+        // 2. Refresh kuota AV juga (side benefit: kuota realtime tanpa reload page)
+        const sess = getSessionUser();
+        if (sess?.id) {
+          await loadKuotaFromApi();
+        }
+
+        // =============== WARNING GPS TIDAK KUNJUNG DATANG (lebih dari 2 menit) ===============
+        // Cek: Untuk anak yang TERPILIH (active child) — jika sudah 2 menit sejak user buka halaman ini
+        //   dan masih belum ada GPS data (hasGps=false), tampilkan warning SEKALI SAJA (tidak spam tiap 15 detik).
+        const active = childrenList.find(c => c.id === selectedChildId) || childrenList[0] || null;
+        if (active && !warningGpsFirstShown) {
+          const sudahDuaMenit = (Date.now() - mountTimestampMs) >= GPS_WARN_THRESHOLD_MS;
+          const latlngZeroish = Math.abs(Number(active.latitude)) < 0.001 && Math.abs(Number(active.longitude)) < 0.001;
+          if (sudahDuaMenit && latlngZeroish) {
+            warningGpsFirstShown = true;
+            showToast(
+              `[GPS] Data lokasi ${active.name} BELUM diterima dari perangkat. ` +
+              `Solusi: Pastikan HP perangkat anak ON, GPS diaktifkan, buka app LitensiKids, izinkan Lokasi "Allow all the time" → tunggu 15 menit (worker periodic) atau jalan keluar rumah (geofence trigger expedited upload <10 detik).`,
+              'warning'
+            );
+          }
+        }
+      } catch (err: any) {
+        // Poll failure → JANGAN crash page, cuma console.error verbose debug.
+        console.error('[AudioMonitor-G4.3] Poll GPS 15s error:', err?.message || err);
+      }
+    };
+
+    // Polling start: 15 detik sekali looping selama component masih mounted.
+    pollIntervalId = setInterval(runPoll, POLL_INTERVAL_MS);
+
+    // Cleanup unmount: HENTIKAN polling (clear interval) agar tidak ada memory leak / request API berjalan di-background.
+    return () => {
+      if (pollIntervalId != null) {
+        clearInterval(pollIntervalId);
+        pollIntervalId = null;
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedChildId]);
+
+  // =========================================================================
+  // (G4.2 helper) Cek: apakah active child LATITUDE LONGITUDE = 0,0 (Null Island)?
+  //   Artinya GPS belum pernah dikirim companion → marker tidak boleh tampil di tengah laut!
+  //   Digunakan nanti GoogleMapsMonitorCanvas defaultCenter fallback ke lokasi user browser jika GPS 0,0.
+  // =========================================================================
+  const isGpsUnavailable = (c: { latitude: number; longitude: number } | null): boolean => {
+    if (!c) return true;
+    return Math.abs(Number(c.latitude)) < 0.001 && Math.abs(Number(c.longitude)) < 0.001;
+  };
 
   // Cleanup unmount: Jika ada sesi aktif yang belum di-stop, auto stop paksa (hindari sesi menggantung)
   useEffect(() => {
