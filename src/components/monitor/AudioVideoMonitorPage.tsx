@@ -334,24 +334,11 @@ export const AudioVideoMonitorPage: React.FC<AudioVideoMonitorPageProps> = ({ sh
       // Rule 2: GPS null / tidak punya data → 15 DETIK polling biar lebih cepat dapat GPS pertama
       if (!active || isGpsUnavailable(active)) return 15 * 1000;
 
-      // Rule 3: Anak BERGERAK → 5 DETIK polling
-      //   Cara deteksi motion: compare dengan point sebelumnya (jika ada).
-      //     (a) Distance > 50 METER sejak poll terakhir (artinya beneran bergerak bukan noise 1-5m)
-      //     (b) ATAU elapsed sejak last poll < 60 detik & posisi BERBEDA → companion baru expedited upload → motion.
-      let motionDetected = false;
-      if (lastPollChildLatLng && !isGpsUnavailable(active)) {
-        const dist = haversineDistanceMeters(lastPollChildLatLng.lat, lastPollChildLatLng.lng, Number(active.latitude), Number(active.longitude));
-        if (dist > 50) motionDetected = true;
-        const elapsedSinceLastMs = Date.now() - lastPollChildLatLng.ts;
-        if (elapsedSinceLastMs < 60_000 && dist > 5) motionDetected = true;
-      }
-      // (3b) "Baru saja" / "<x detik lalu" yang pendek → anggap motion
-      const baruSaja = (active.lastUpdated || '').includes('Baru saja') || (active.lastUpdated || '').includes('detik');
-      if (baruSaja) motionDetected = true;
-      if (motionDetected) return 5 * 1000;
-
-      // Rule default ANAK DIAM: 15 DETIK
-      return 15 * 1000;
+      // (G7 User request realtime smooth seperti Waze!) Rule default SELALU 5 DETIK jika GPS SUDAH ADA (bukan 0,0)
+      //   Alasan: Android companion sekarang MAX LATENCY upload 5 DETIK (debounce 5000L EXPEDITED).
+      //   Kalau frontend polling 5 detik → 10 detik worst case antara gerak HP → marker web bergerak.
+      //   Trade-off: 5 detik polling = 12 request / menit = ~700KB / jam JSON ~3KB. Masih budget server OK.
+      return 5 * 1000;
     };
 
     // Jalankan poll SEGERA sekali pertama tidak tunggu

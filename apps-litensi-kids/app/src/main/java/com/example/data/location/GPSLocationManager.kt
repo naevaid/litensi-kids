@@ -79,13 +79,15 @@ object GPSLocationManager {
     private var currentMode: GpsMode = GpsMode.STATIONARY
     // Counter berapa point GPS berturut-turut dalam MODE_FAST (untuk trigger batch expedited upload)
     private var consecutiveFastPointCount: Int = 0
-    // (G6 Bugfix: NEVER wait 15 min WorkManager!) Flag & debounce timestamp expedited upload scheduled
-    //   Setiap ada GPS point baru → schedule ONE-TIME upload delayed 60 detik (untuk batch buffer beberapa point).
-    //   Jika sudah ada scheduled dalam <60 detik → TIDAK double schedule (debounce).
-    //   Result: MAX LATENCY 60 DETIK ANTARA GPS CAPTURE DI HP → DB BACKEND UPDATE → Web Marker refresh polling 15s ≤ 75 detik.
-    //   JAUH LEBIH BAIK dari tunggu periodic 15 menit (bisa 1-15 menit random Doze).
+    // (G7 User request MAX LATENCY 5 DETIK!) Flag & debounce timestamp expedited upload scheduled
+    //   Setiap ada GPS point baru → JIKA sudah lewat ≥5 DETIK sejak last upload → expedited UPLOAD SEKARANG.
+    //   Jika <5 detik → skip (debounce hindari spam HTTP / kuota boros berlebih).
+    //   Result: MAX LATENCY 5 DETIK ANTARA GPS CAPTURE DI HP → DB BACKEND TERUPDATE → Web Marker ≤5+polling.
+    //   Trade-off: Upload HTTP setiap 5 detik = ~12 request / menit = ~700KB / jam kuota.
+    //              Baterai ~5-10% lebih boros / jam (modem radio bangun setiap 5 detik untuk upload).
+    //              TAPI user request = realtime seperti Waze/Google Maps navigation → GO APPLY 5 DETIK.
     private var lastExpeditedScheduledAtMs: Long = 0L
-    private const val EXPEDITED_DEBOUNCE_INTERVAL_MS: Long = 60_000L // 60 detik buffer batch
+    private const val EXPEDITED_DEBOUNCE_INTERVAL_MS: Long = 5_000L // 5 DETIK = MAX LATENCY SESUAI USER REQUEST!
     // ApplicationContext disimpan untuk call enqueueExpeditedOneTime di dalam onLocationResult
     private var appContext: Context? = null
 
@@ -255,7 +257,7 @@ object GPSLocationManager {
                     val triggerA = speedKmh >= SPEED_EMERGENCY_UPLOAD_KMH
                     if (currentMode == GpsMode.FAST) consecutiveFastPointCount++
                     val triggerB = currentMode == GpsMode.FAST && consecutiveFastPointCount >= FAST_POINT_BATCH_UPLOAD
-                    // Trigger C = DEBOUNCE: SETIAP point baru → schedule 60 detik jika sudah lewat >60 detik sejak last schedule
+                    // Trigger C = DEBOUNCE: SETIAP point baru → UPLOAD SEKARANG JIKA sudah ≥5 DETIK sejak last schedule
                     val now = System.currentTimeMillis()
                     val triggerC = (now - lastExpeditedScheduledAtMs) >= EXPEDITED_DEBOUNCE_INTERVAL_MS
                     if (triggerA || triggerB || triggerC) {
@@ -263,7 +265,7 @@ object GPSLocationManager {
                         val triggerStr = when {
                             triggerA -> "speed emergency ≥${SPEED_EMERGENCY_UPLOAD_KMH}km/j (UPLOAD NOW)"
                             triggerB -> "batch $FAST_POINT_BATCH_UPLOAD point mode fast (UPLOAD NOW)"
-                            triggerC -> "debounce 60detik point baru (UPLOAD AFTER 60detik DELAY, batch buffer)"
+                            triggerC -> "debounce 5detik point baru (UPLOAD NOW — MAX LATENCY 5d REQUEST USER)"
                             else -> "???"
                         }
                         Log.i(TAG, "🚀 EXPEDITED GPS UPLOAD TRIGGER (trigger: $triggerStr). counter=$consecutiveFastPointCount lastSchedule=$lastExpeditedScheduledAtMs now=$now → call GPSUploadWorker.enqueueExpeditedOneTime(ctx)")
