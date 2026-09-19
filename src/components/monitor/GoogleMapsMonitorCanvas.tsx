@@ -8,7 +8,7 @@ import {
 } from '@vis.gl/react-google-maps';
 import {
   Layers, Compass, ZoomIn, ZoomOut, RefreshCw, Radio,
-  Smartphone, Battery, Wifi, ShieldCheck, MapPin, Check
+  Smartphone, Battery, Wifi, ShieldCheck, MapPin, Check, Clock
 } from 'lucide-react';
 
 export interface ChildDeviceMonitor {
