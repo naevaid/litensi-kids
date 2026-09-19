@@ -52,7 +52,7 @@ export const BroadcastPage: React.FC<BroadcastPageProps> = ({ user, showToast })
     try {
       setLoading(true);
       const resAnak = uid
-        ? await api.get('/anak', { params: { user_id: uid } })
+        ? await api.get('/anak', { user_id: uid })
         : ({ ok: true, data: [] } as any);
 
       const anakRawArray: any[] = Array.isArray(resAnak?.data)

@@ -135,10 +135,10 @@ export const RiwayatNotifikasiPage: React.FC<RiwayatNotifikasiPageProps> = ({ sh
       // Parallel call: notifikasi + daftar anak (keduanya difilter user_id session)
       const [resNotif, resAnak] = await Promise.all([
         uid
-          ? api.get('/notifikasi', { params: { user_id: uid, limit: 100 } })
+          ? api.get('/notifikasi', { user_id: uid, limit: 100 })
           : Promise.resolve({ ok: true, data: { list: [], summary: {} } } as any),
         uid
-          ? api.get('/anak', { params: { user_id: uid } })
+          ? api.get('/anak', { user_id: uid })
           : Promise.resolve({ ok: true, data: [] } as any),
       ]);
 

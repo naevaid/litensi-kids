@@ -20,38 +20,18 @@ class AnakController extends Controller
     // Daftar semua profil anak berdasarkan user
     public function index(Request $request): JsonResponse
     {
-        // (G11 FIX BUG DATA KOSONG + SECURITY ANTI SPOOF)
-        // PRIORITAS AUTH SERVER JANGAN PERCAYA client input('user_id') yang bisa di-spoof!
-        //   1. Coba ambil user_id DARI TOKEN AUTH SERVER (paling aman).
-        //   2. JIKA input client user_id VALID (numeric) DAN ROLE user login ADMIN — boleh filter untuk melihat user lain (admin dashboard global access optional).
-        //   3. JIKA TIDAK ADA auth id & input invalid → return KOSONG (privacy zero tolerance).
-        $authUserId = auth()->check() ? (int) auth()->id() : null;
-        $inputUserId = $request->input('user_id');
-        $numericInput = !empty($inputUserId) && is_numeric($inputUserId) ? (int) $inputUserId : null;
-
-        $userId = null;
-        if ($numericInput !== null) {
-            // (Security) Jika user login = admin/role tinggi BOLEH filter ke user id lain (opsional).
-            // Jika BUKAN admin → HANYA BOLEH pakai authUserId sendiri, MESKIPUN client kirim user_id lain (anti spoof akses data anak user lain).
-            $isAdminRole = auth()->check() && in_array(strtolower((string) (auth()->user()->role ?? '')), ['admin', 'master', 'superadmin', 'owner'], true);
-            if ($isAdminRole) {
-                $userId = $numericInput;
-            } else {
-                // Bukan admin: jika client kirim user_id !== authUserId → FORCE pakai authUserId sendiri (privasi paksa).
-                $userId = $authUserId ?? $numericInput;
-            }
-        } else {
-            // Input user_id TIDAK ADA / invalid → GUNAKAN AUTH ID SERVER (paling aman).
-            $userId = $authUserId;
-        }
-
-        if (empty($userId) || !is_int($userId) || $userId <= 0) {
-            // Final fallback: TIDAK ADA satupun sumber user_id valid → return KOSONG (JANGAN default 1 BOCOR DATA)
+        // KONVENSI_INTEGRASI_API.md (L73-L126 Zero Tolerance Privacy)
+        // Client WAJIB kirim query param `user_id` (apiClient frontend auto inject dari
+        // localStorage session jika authRequired=true DEFAULT — TIDAK PERLU manual params).
+        // JANGAN PERNAH ada default auth()->id() atau nilai fallback integer lain!
+        $userId = $request->input('user_id');
+        if (empty($userId) || !is_numeric($userId)) {
             return response()->json([
                 'success' => true,
                 'data' => [],
             ]);
         }
+        $userId = (int) $userId;
 
         $anak = ProfilAnak::where('user_id', $userId)
             ->with('user')
